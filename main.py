@@ -1,3 +1,4 @@
+from numpy import string_
 from pandas import read_csv
 from pandas import DataFrame
 from pandas.plotting import scatter_matrix
@@ -25,6 +26,7 @@ dropType = "一般順"
 address = dropTypeAddressDict[dropType]
 isNeedUpdate = False
 lotteryType = 1
+isShowPlot = False
 
 # use creds to create a client to interact with the Google Drive API
 scope = ['https://spreadsheets.google.com/feeds']
@@ -64,34 +66,46 @@ dataset['Sixth'] = dataset['Sixth'].astype(float)
 dataset['Special'] = dataset['Special'].astype(float)
 # print(dataset)
 #
+
 # url = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/iris.csv"
 # names = ['sepal-length', 'sepal-width', 'petal-length', 'petal-width', 'class']
 # dataset = read_csv(url, names=names)
-# shape
-print(dataset.shape)
-# head
-print(dataset.head(20))
-# descriptions
-print(dataset.describe())
-# class distribution
-print(dataset.groupby('ID').size())
 
-dataset.plot(kind='box', subplots=True, layout=(3, 3), sharex=False, sharey=False)
-pyplot.show()
+# # shape
+# print(dataset.shape)
+# # head
+# print(dataset.head(20))
+# # descriptions
+# print(dataset.describe())
+# # class distribution
+# print(dataset.groupby('ID').size())
 
-dataset.hist()
-pyplot.show()
+# array = dataset.values
+# X = array[:,0:4] 
+# y = array[:,4] 
+# X_train, X_validation, Y_train, Y_validation = train_test_split(X, y, test_size=0.20, random_state=1)
 
-# scatter plot matrix
-scatter_matrix(dataset)
-pyplot.show()
+
+
+
+
+if isShowPlot:
+    dataset.plot(kind='box', subplots=True, layout=(3, 3), sharex=False, sharey=False)
+    pyplot.show()
+
+    dataset.hist()
+    pyplot.show()
+
+    # scatter plot matrix
+    scatter_matrix(dataset)
+    pyplot.show()
 
 # Split-out validation dataset
 array = dataset.values
-x = array[:, 0:4]
-y = array[:, 4]
+X = array[:,3:7]
+y = array[:,7]
 
-X_train, X_validation, Y_train, Y_validation = train_test_split(x, y, test_size=0.20, random_state=1)
+X_train, X_validation, Y_train, Y_validation = train_test_split(X, y, test_size=0.20, random_state=1)
 
 # Spot Check Algorithms
 models = [
