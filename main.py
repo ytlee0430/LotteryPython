@@ -20,24 +20,27 @@ from oauth2client.service_account import ServiceAccountCredentials
 from bs4 import BeautifulSoup
 import requests
 
+
+# type = 1 大樂透， type=2 威力彩
+# http://www.9800.com.tw/statistics.asp 一般順
+# http://www.9800.com.tw/drop.asp 落球順
 dropTypeAddressDict = {"一般順": "http://www.9800.com.tw/statistics.asp", "落球順": "http://www.9800.com.tw/drop.asp"}
+lotteryTypeAndTitleDitc = {1: "big-lottery", 2: "power-lottery"}
 
 dropType = "一般順"
 address = dropTypeAddressDict[dropType]
 isNeedUpdate = False
-lotteryType = 1
+lotteryType = 2
 isShowPlot = False
 
 # use creds to create a client to interact with the Google Drive API
 scope = ['https://spreadsheets.google.com/feeds']
 creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ").sheet1
+sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ").worksheet(lotteryTypeAndTitleDitc[lotteryType])
 
 if isNeedUpdate:
-    # type = 1 大樂透， type=2 威力彩
-    # http://www.9800.com.tw/statistics.asp 一般順
-    # http://www.9800.com.tw/drop.asp 落球順
+
     d = {'p1': '092001', 'p2': '120000', 'l': 0, 'type': lotteryType}
     response = requests.post(address, data=d)
     soup = BeautifulSoup(response.text, "lxml")
@@ -86,9 +89,6 @@ dataset['Special'] = dataset['Special'].astype(float)
 # X_train, X_validation, Y_train, Y_validation = train_test_split(X, y, test_size=0.20, random_state=1)
 
 
-
-
-
 if isShowPlot:
     dataset.plot(kind='box', subplots=True, layout=(3, 3), sharex=False, sharey=False)
     pyplot.show()
@@ -102,8 +102,10 @@ if isShowPlot:
 
 # Split-out validation dataset
 array = dataset.values
-X = array[:,3:7]
-y = array[:,7]
+X = array[:len(array)-1,3:9]
+y = array[:len(array)-1,7]
+for index, nums in enumerate(array[1:,3:9], start=0):
+    y[index] = str(nums[5])
 
 X_train, X_validation, Y_train, Y_validation = train_test_split(X, y, test_size=0.20, random_state=1)
 
@@ -126,4 +128,13 @@ for name, model in models:
     results.append(cv_results)
     names.append(name)
     print('%s: %f (%f)' % (name, cv_results.mean(), cv_results.std()))
-
+    # Make predictions on validation dataset 
+    model = SVC(gamma='auto') 
+    model.fit(X_train, Y_train) 
+    # predictions = model.predict(X_validation)
+    # print(accuracy_score(Y_validation, predictions)) 
+    # print(confusion_matrix(Y_validation, predictions)) 
+    # print(classification_report(Y_validation, predictions))
+    t = array[len(array)-1:len(array),3:9]
+    predictions = model.predict(array[len(array)-1:len(array),3:9])
+    print(predictions)
