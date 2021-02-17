@@ -1,5 +1,3 @@
-from numpy import string_
-from pandas import read_csv
 from pandas import DataFrame
 from pandas.plotting import scatter_matrix
 from matplotlib import pyplot
@@ -25,22 +23,27 @@ import requests
 # http://www.9800.com.tw/statistics.asp 一般順
 # http://www.9800.com.tw/drop.asp 落球順
 dropTypeAddressDict = {"一般順": "http://www.9800.com.tw/statistics.asp", "落球順": "http://www.9800.com.tw/drop.asp"}
-lotteryTypeAndTitleDitc = {1: "big-lottery", 2: "power-lottery"}
+lotteryTypeAndTitleDict = {1: "big-lottery", 2: "power-lottery"}
+isNeedUpdate = False
 
+lotteryType = 2
 dropType = "一般順"
 address = dropTypeAddressDict[dropType]
-isNeedUpdate = False
-lotteryType = 2
 isShowPlot = False
+sampleCount = -1
+
+isSpecial = False
+predictNumber = 4 if not isSpecial else 1
+columnStart = 3 if not isSpecial else 9
+columnEnd = 9 if not isSpecial else 10
 
 # use creds to create a client to interact with the Google Drive API
 scope = ['https://spreadsheets.google.com/feeds']
 creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ").worksheet(lotteryTypeAndTitleDitc[lotteryType])
+sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ").worksheet(lotteryTypeAndTitleDict[lotteryType])
 
 if isNeedUpdate:
-
     d = {'p1': '092001', 'p2': '120000', 'l': 0, 'type': lotteryType}
     response = requests.post(address, data=d)
     soup = BeautifulSoup(response.text, "lxml")
@@ -53,7 +56,7 @@ if isNeedUpdate:
         data.append([i+1] + [ele for ele in tds if ele])
     dataset = DataFrame(data[1:], columns=data[0])
     sheet.update([dataset.columns.values.tolist()] + dataset.values.tolist())
-#
+
 # # Extract and print all of the values
 list_of_hashes = sheet.get_all_values()
 dataset = DataFrame(list_of_hashes[1:],
@@ -67,27 +70,6 @@ dataset['Fourth'] = dataset['Fourth'].astype(float)
 dataset['Fifth'] = dataset['Fifth'].astype(float)
 dataset['Sixth'] = dataset['Sixth'].astype(float)
 dataset['Special'] = dataset['Special'].astype(float)
-# print(dataset)
-#
-
-# url = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/iris.csv"
-# names = ['sepal-length', 'sepal-width', 'petal-length', 'petal-width', 'class']
-# dataset = read_csv(url, names=names)
-
-# # shape
-# print(dataset.shape)
-# # head
-# print(dataset.head(20))
-# # descriptions
-# print(dataset.describe())
-# # class distribution
-# print(dataset.groupby('ID').size())
-
-# array = dataset.values
-# X = array[:,0:4] 
-# y = array[:,4] 
-# X_train, X_validation, Y_train, Y_validation = train_test_split(X, y, test_size=0.20, random_state=1)
-
 
 if isShowPlot:
     dataset.plot(kind='box', subplots=True, layout=(3, 3), sharex=False, sharey=False)
@@ -102,10 +84,13 @@ if isShowPlot:
 
 # Split-out validation dataset
 array = dataset.values
-X = array[:len(array)-1,3:9]
-y = array[:len(array)-1,7]
-for index, nums in enumerate(array[1:,3:9], start=0):
-    y[index] = str(nums[5])
+startIndex = len(array)-sampleCount
+if sampleCount < 0 or startIndex < 0:
+    startIndex = 0
+y = []
+X = array[startIndex:len(array) - 1, columnStart:columnEnd]
+for nums in array[startIndex+1:, columnStart:columnEnd]:
+    y.append(nums[predictNumber-1])
 
 X_train, X_validation, Y_train, Y_validation = train_test_split(X, y, test_size=0.20, random_state=1)
 
@@ -129,12 +114,13 @@ for name, model in models:
     names.append(name)
     print('%s: %f (%f)' % (name, cv_results.mean(), cv_results.std()))
     # Make predictions on validation dataset 
-    model = SVC(gamma='auto') 
-    model.fit(X_train, Y_train) 
+    model.fit(X_train, Y_train)
     # predictions = model.predict(X_validation)
     # print(accuracy_score(Y_validation, predictions)) 
     # print(confusion_matrix(Y_validation, predictions)) 
     # print(classification_report(Y_validation, predictions))
-    t = array[len(array)-1:len(array),3:9]
-    predictions = model.predict(array[len(array)-1:len(array),3:9])
+    if isSpecial:
+        predictions = model.predict(array[len(array)-1:len(array), 9:10])
+    else:
+        predictions = model.predict(array[len(array)-1:len(array), 3:9])
     print(predictions)
