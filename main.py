@@ -1,3 +1,4 @@
+from numpy import append
 from pandas import DataFrame
 from pandas.plotting import scatter_matrix
 from matplotlib import pyplot
@@ -24,16 +25,16 @@ import requests
 # http://www.9800.com.tw/drop.asp 落球順
 dropTypeAddressDict = {"一般順": "http://www.9800.com.tw/statistics.asp", "落球順": "http://www.9800.com.tw/drop.asp"}
 lotteryTypeAndTitleDict = {1: "big-lottery", 2: "power-lottery"}
-isNeedUpdate = False
 
-lotteryType = 2
+isNeedUpdate = True
+lotteryType = 1
 dropType = "一般順"
 address = dropTypeAddressDict[dropType]
 isShowPlot = False
 sampleCount = -1
 
 isSpecial = False
-predictNumber = 4 if not isSpecial else 1
+predictNumber = 6 if not isSpecial else 1
 columnStart = 3 if not isSpecial else 9
 columnEnd = 9 if not isSpecial else 10
 
@@ -41,7 +42,8 @@ columnEnd = 9 if not isSpecial else 10
 scope = ['https://spreadsheets.google.com/feeds']
 creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ").worksheet(lotteryTypeAndTitleDict[lotteryType])
+sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
+    .worksheet(lotteryTypeAndTitleDict[lotteryType]+"-"+dropType)
 
 if isNeedUpdate:
     d = {'p1': '092001', 'p2': '120000', 'l': 0, 'type': lotteryType}
@@ -51,9 +53,17 @@ if isNeedUpdate:
     trs = table.find_all("tr")[2:]
     data = [['ID', 'Period', 'Date', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Special']]
     for i, tr in enumerate(trs):
-        tds = tr.find_all("td")[:9]
-        tds = [td.text.strip() for td in tds]
-        data.append([i+1] + [ele for ele in tds if ele])
+        if dropType == "落球順":
+            tds = tr.find_all("td")[:9]
+            e = [i+1] + [td.text.strip() for td in tds[:2]]
+            tds = tds[3].text.replace("\xa0", "+")
+            tds = tds.replace("\r\n", "")
+            tds = [td.strip() for td in tds.split("+")]
+            data.append(e + [ele for ele in tds if ele])  
+        else:
+            tds = tr.find_all("td")[:9]
+            tds = [td.text.strip() for td in tds]
+            data.append([i+1] + [ele for ele in tds if ele])
     dataset = DataFrame(data[1:], columns=data[0])
     sheet.update([dataset.columns.values.tolist()] + dataset.values.tolist())
 
