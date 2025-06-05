@@ -11,9 +11,11 @@ class Draw:
     special: str
 
 class TaiwanLottery:
+    """Scrape draw results from lot539.com."""
+
     BASE_URLS = {
-        "big": "https://www.taiwanlottery.com.tw/lotto/lotto649/history.aspx",
-        "super": "https://www.taiwanlottery.com.tw/lotto/superlotto638/history.aspx",
+        "big": "https://www.lot539.com/lottery/search?type=big",
+        "super": "https://www.lot539.com/lottery/search?type=super",
     }
 
     def __init__(self):
@@ -32,21 +34,35 @@ class TaiwanLottery:
         return res.text
 
     def parse_draws(self, html: str) -> List[Draw]:
+        """Parse draw information from lot539 search results."""
         soup = BeautifulSoup(html, "html.parser")
-        table = soup.find("table", id=lambda x: x and "history" in x.lower())
-        if not table:
-            return []
-        rows = table.find_all("tr")[2:]
+        tables = soup.select("div.content table.table.is-bordered")
         draws = []
-        for row in rows:
-            cols = [td.text.strip() for td in row.find_all("td") if td.text.strip()]
-            if len(cols) < 8:
+        for table in tables:
+            first_row = table.find("tr")
+            if not first_row:
                 continue
-            period = cols[0]
-            date = cols[1]
-            numbers = cols[2:8]
-            special = cols[8] if len(cols) > 8 else cols[-1]
-            draws.append(Draw(period, date, numbers, special))
+            cells = first_row.find_all("td")
+            if len(cells) < 2:
+                continue
+            period_date = cells[0].get_text("\n", strip=True).split("\n")
+            if len(period_date) < 2:
+                continue
+            period, date = period_date[0], period_date[1]
+
+            nums = []
+            special = ""
+            for p in cells[1].find_all("p"):
+                if "落球順序" in p.get_text():
+                    for span in p.find_all("span", class_="lottery-ball"):
+                        text = span.text.strip()
+                        if "is-special" in span.get("class", []):
+                            special = text
+                        else:
+                            nums.append(text)
+                    break
+            if nums:
+                draws.append(Draw(period, date, nums, special))
         return draws
 
     def get_latest_draws(self, lottery_type: str, count: int = 10) -> List[Draw]:
