@@ -27,8 +27,21 @@ class TaiwanLottery:
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         }
 
-    def fetch_html(self, lottery_type: str) -> str:
+    def fetch_html(
+        self,
+        lottery_type: str,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> str:
+        """Retrieve raw HTML for the given lottery type and date range."""
         url = self.BASE_URLS[lottery_type]
+        parts = []
+        if start:
+            parts.append(("start", start))
+        if end:
+            parts.append(("end", end))
+        if parts:
+            url += "&" + "&".join(f"{k}={v}" for k, v in parts)
         res = self.scraper.get(url, headers=self.headers)
         res.raise_for_status()
         return res.text
@@ -39,10 +52,10 @@ class TaiwanLottery:
         tables = soup.select("div.content table.table.is-bordered")
         draws = []
         for table in tables:
-            first_row = table.find("tr")
-            if not first_row:
+            body_row = table.select_one("tbody tr")
+            if not body_row:
                 continue
-            cells = first_row.find_all("td")
+            cells = body_row.find_all("td")
             if len(cells) < 2:
                 continue
             period_date = cells[0].get_text("\n", strip=True).split("\n")
@@ -65,7 +78,17 @@ class TaiwanLottery:
                 draws.append(Draw(period, date, nums, special))
         return draws
 
-    def get_latest_draws(self, lottery_type: str, count: int = 10) -> List[Draw]:
-        html = self.fetch_html(lottery_type)
+    def get_latest_draws(
+        self,
+        lottery_type: str,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        count: int | None = None,
+    ) -> List[Draw]:
+        """Fetch and parse draw results within a date range."""
+        html = self.fetch_html(lottery_type, start=start, end=end)
         draws = self.parse_draws(html)
-        return draws[:count]
+        if count is not None:
+            return draws[:count]
+        return draws
