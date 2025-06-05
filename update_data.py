@@ -1,7 +1,7 @@
 """Update lottery results to Google Sheets."""
 
 from datetime import datetime, timedelta
-from typing import Counter
+from collections import Counter
 import argparse
 import csv
 from pathlib import Path
@@ -68,12 +68,16 @@ def main(lotto_type: str) -> None:
     if not all_record_sequence:
         latest_id = 0
         latest_period = 0
+        start_date = None
     else:
         latest_record = max(all_record_sequence, key=lambda x: x['ID'])
         latest_id = int(latest_record['ID'])
         latest_period = int(latest_record['Period'])
+        start_date = add_one_day(latest_record['Date'])
 
-    draws = tl.get_latest_draws(lotto_type, count=50)
+    end_date = datetime.today().strftime('%Y-%m-%d')
+
+    draws = tl.get_latest_draws(lotto_type, start=start_date, end=end_date)
 
     sequence_rows = []
     sorted_rows = []
