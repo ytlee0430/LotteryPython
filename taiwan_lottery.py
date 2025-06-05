@@ -52,10 +52,10 @@ class TaiwanLottery:
         tables = soup.select("div.content table.table.is-bordered")
         draws = []
         for table in tables:
-            first_row = table.find("tr")
-            if not first_row:
+            body_row = table.select_one("tbody tr")
+            if not body_row:
                 continue
-            cells = first_row.find_all("td")
+            cells = body_row.find_all("td")
             if len(cells) < 2:
                 continue
             period_date = cells[0].get_text("\n", strip=True).split("\n")
