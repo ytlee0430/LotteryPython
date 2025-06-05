@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
+from typing import Counter
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import httpx
 import cloudscraper
 
 from parse import Parser
 from lottery_data import LotteryData
+
+
 
 def add_one_day(date_str, date_format='%Y-%m-%d'):
     # Convert the string to a datetime object
@@ -18,7 +20,7 @@ def add_one_day(date_str, date_format='%Y-%m-%d'):
 # type=big 大樂透， type=super 威力彩
 lotteryTypeAndTitleDict = {"big": "big-lottery", "super": "power-lottery"}
 dropType = "一般順"
-type="big"
+type="super"
 
 
 
@@ -41,11 +43,23 @@ latest_period = latest_record['Period']
 
 base_url = f"https://www.lot539.com/lottery/search?start={add_one_day(latest_date)}"
 final_url = f"{base_url}&type={type}"
-responsex = httpx.get(final_url)
-scraper = cloudscraper.create_scraper(browser={'browser': 'firefox','platform': 'windows','mobile': False})
-html = scraper.get(final_url).content.decode('utf-8')
+
+scraper = cloudscraper.create_scraper(
+    browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
+)
+
+html = scraper.get(final_url).text  
 
 parser = Parser()
 parser.parse_html(html, lottery_data, latest_id, latest_period)
 sequence_sheet.append_rows(lottery_data.sequence_data)
 sorted_sheet.append_rows(lottery_data.sorted_data)
+
+
+def predict_hot50(df, today_index):
+    train = df.iloc[today_index-50:today_index]      # 最近 50 期
+    nums  = train[['First','Second','Third','Fourth','Fifth','Sixth']].values.ravel()
+    cnt   = Counter(nums).most_common(6)
+    main  = [n for n,_ in cnt]                       # 6 個主號
+    special = train['Special'].value_counts().idxmax()
+    return main, special
