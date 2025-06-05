@@ -3,11 +3,27 @@
 from datetime import datetime, timedelta
 from typing import Counter
 import argparse
+import csv
+from pathlib import Path
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 from taiwan_lottery import TaiwanLottery
 from lottery_data import LotteryData
+
+
+def _save_to_local_csv(lotto_type: str, mode: str, rows: list[list]):
+    """Append new rows to a local CSV file."""
+    csv_name = f"{lotto_type}_{mode}.csv"
+    path = Path(__file__).resolve().parent / csv_name
+    file_exists = path.exists()
+    with path.open("a", newline="", encoding="utf-8") as fp:
+        writer = csv.writer(fp)
+        if not file_exists:
+            writer.writerow(CSV_HEADER)
+        writer.writerows(rows)
+
+
 def add_one_day(date_str, date_format='%Y-%m-%d'):
     # Convert the string to a datetime object
     date_obj = datetime.strptime(date_str, date_format)
@@ -19,6 +35,19 @@ def add_one_day(date_str, date_format='%Y-%m-%d'):
 # type=big 大樂透， type=super 威力彩
 lotteryTypeAndTitleDict = {"big": "big-lottery", "super": "power-lottery"}
 dropType = "一般順"
+
+CSV_HEADER = [
+    "ID",
+    "Period",
+    "Date",
+    "First",
+    "Second",
+    "Third",
+    "Fourth",
+    "Fifth",
+    "Sixth",
+    "Special",
+]
 
 
 def main(lotto_type: str) -> None:
@@ -65,6 +94,8 @@ def main(lotto_type: str) -> None:
     if sequence_rows:
         sequence_sheet.append_rows(sequence_rows)
         sorted_sheet.append_rows(sorted_rows)
+        _save_to_local_csv(lotto_type, "sequence", sequence_rows)
+        _save_to_local_csv(lotto_type, "sorted", sorted_rows)
 
 
 if __name__ == "__main__":
