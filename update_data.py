@@ -1,14 +1,13 @@
+"""Update lottery results to Google Sheets."""
+
 from datetime import datetime, timedelta
 from typing import Counter
+import argparse
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import cloudscraper
 
-from parse import Parser
+from taiwan_lottery import TaiwanLottery
 from lottery_data import LotteryData
-
-
-
 def add_one_day(date_str, date_format='%Y-%m-%d'):
     # Convert the string to a datetime object
     date_obj = datetime.strptime(date_str, date_format)
@@ -20,40 +19,64 @@ def add_one_day(date_str, date_format='%Y-%m-%d'):
 # type=big 大樂透， type=super 威力彩
 lotteryTypeAndTitleDict = {"big": "big-lottery", "super": "power-lottery"}
 dropType = "一般順"
-type="super"
 
 
+def main(lotto_type: str) -> None:
+    tl = TaiwanLottery()
 
-# use creds to create a client to interact with the Google Drive API
-scope = ['https://spreadsheets.google.com/feeds']
-creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-client = gspread.authorize(creds)
-sequence_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
-    .worksheet(lotteryTypeAndTitleDict[type]+"-"+"落球順")
-sorted_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
-    .worksheet(lotteryTypeAndTitleDict[type]+"-"+"一般順")
-all_record_sequence = sequence_sheet.get_all_records()
-all_record_sorted = sorted_sheet.get_all_records()
-lottery_data = LotteryData(type, [], [])
+    # use creds to create a client to interact with the Google Drive API
+    scope = ['https://spreadsheets.google.com/feeds']
+    creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+    client = gspread.authorize(creds)
+    sequence_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
+        .worksheet(lotteryTypeAndTitleDict[lotto_type]+"-"+"落球順")
+    sorted_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
+        .worksheet(lotteryTypeAndTitleDict[lotto_type]+"-"+"一般順")
 
-latest_record = max(all_record_sequence, key=lambda x: x['ID'])
-latest_date = latest_record['Date']
-latest_id = latest_record['ID']
-latest_period = latest_record['Period']
+    all_record_sequence = sequence_sheet.get_all_records()
+    lottery_data = LotteryData(lotto_type, [], [])
 
-base_url = f"https://www.lot539.com/lottery/search?start={add_one_day(latest_date)}"
-final_url = f"{base_url}&type={type}"
+    if not all_record_sequence:
+        latest_id = 0
+        latest_period = 0
+    else:
+        latest_record = max(all_record_sequence, key=lambda x: x['ID'])
+        latest_id = int(latest_record['ID'])
+        latest_period = int(latest_record['Period'])
 
-scraper = cloudscraper.create_scraper(
-    browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
-)
+    draws = tl.get_latest_draws(lotto_type, count=50)
 
-html = scraper.get(final_url).text  
+    sequence_rows = []
+    sorted_rows = []
+    for draw in draws:
+        try:
+            period_num = int(draw.period)
+        except ValueError:
+            continue
+        if period_num <= latest_period:
+            continue
+        latest_id += 1
+        nums = [int(n) for n in draw.numbers]
+        special = int(draw.special)
+        sequence_rows.append([latest_id, draw.period, draw.date] + nums + [special])
+        sorted_rows.append([latest_id, draw.period, draw.date] + sorted(nums) + [special])
 
-parser = Parser()
-parser.parse_html(html, lottery_data, latest_id, latest_period)
-sequence_sheet.append_rows(lottery_data.sequence_data)
-sorted_sheet.append_rows(lottery_data.sorted_data)
+
+    if sequence_rows:
+        sequence_sheet.append_rows(sequence_rows)
+        sorted_sheet.append_rows(sorted_rows)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Update lottery data")
+    parser.add_argument(
+        "--type",
+        choices=["big", "super"],
+        default="super",
+        help="Lottery type: big (lotto649) or super (superlotto638)",
+    )
+    args = parser.parse_args()
+    main(args.type)
 
 
 def predict_hot50(df, today_index):
