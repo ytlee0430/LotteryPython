@@ -24,3 +24,8 @@ python update_data.py --type super  # Update 威力彩 (superlotto638)
 
 The script uses `taiwan_lottery.py` to fetch the official history pages, parse the draw period, date, numbers, and special number, then append the results to the appropriate worksheets.
 
+Each time data is fetched, the new rows are also appended to local CSV files
+named `<type>_sequence.csv` and `<type>_sorted.csv` (where `<type>` is `big` or
+`super`). These files mirror the two worksheets so you can keep a local archive
+of the draw history.
+
