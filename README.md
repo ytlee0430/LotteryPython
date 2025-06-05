@@ -22,6 +22,10 @@ python update_data.py --type big    # Update 大樂透 (lotto649)
 python update_data.py --type super  # Update 威力彩 (superlotto638)
 ```
 
+`update_data.py` determines the request range automatically. It sets `start` to
+the day after the last stored draw and `end` to today's date when querying
+`lot539.com`.
+
 The script uses `taiwan_lottery.py` to fetch draw results from [lot539.com](https://www.lot539.com), parse the draw period, date, numbers and special number, then append the results to the appropriate worksheets.
 
 Each time data is fetched, the new rows are also appended to local CSV files
