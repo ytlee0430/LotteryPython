@@ -7,6 +7,13 @@ This project fetches Taiwan lottery results and stores them in Google Sheets.
 - `gspread`, `oauth2client`, `cloudscraper`, `beautifulsoup4`
 - A Google service account JSON placed as `credentials.json`
 
+Ensure `pip` is available. Most Python installations ship with it, and you can
+upgrade to the latest version using:
+
+```bash
+python3 -m pip install --upgrade pip
+```
+
 Install dependencies using `pip`:
 
 ```bash
