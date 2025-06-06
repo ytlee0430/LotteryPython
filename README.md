@@ -33,3 +33,8 @@ named `<type>_sequence.csv` and `<type>_sorted.csv` (where `<type>` is `big` or
 `super`). These files mirror the two worksheets so you can keep a local archive
 of the draw history.
 
+The period value stored in the CSV files and Google Sheets is a six-digit
+string. Any leading `'` character from the original draw period is removed and
+the value is reformatted using `period[:3] + period[-3:]` before being
+appended.
+
