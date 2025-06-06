@@ -78,12 +78,16 @@ def main(lotto_type: str) -> None:
     end_date = datetime.today().strftime('%Y-%m-%d')
 
     draws = tl.get_latest_draws(lotto_type, start=start_date, end=end_date)
+    # Ensure chronological order so IDs and periods increase over time
+    draws.sort(key=lambda d: int(d.period))
 
     sequence_rows = []
     sorted_rows = []
     for draw in draws:
+        period = draw.period.lstrip("'")
+        period = period[:3] + period[-3:]
         try:
-            period_num = int(draw.period)
+            period_num = int(period)
         except ValueError:
             continue
         if period_num <= latest_period:
@@ -91,8 +95,8 @@ def main(lotto_type: str) -> None:
         latest_id += 1
         nums = [int(n) for n in draw.numbers]
         special = int(draw.special)
-        sequence_rows.append([latest_id, draw.period, draw.date] + nums + [special])
-        sorted_rows.append([latest_id, draw.period, draw.date] + sorted(nums) + [special])
+        sequence_rows.append([latest_id, period, draw.date] + nums + [special])
+        sorted_rows.append([latest_id, period, draw.date] + sorted(nums) + [special])
 
 
     if sequence_rows:
