@@ -45,3 +45,7 @@ string. Any leading `'` character from the original draw period is removed and
 the value is reformatted using `period[:3] + period[-3:]` before being
 appended.
 
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
