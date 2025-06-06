@@ -28,8 +28,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 from bs4 import BeautifulSoup
 import requests
 
-from taiwan_lottery import TaiwanLottery
-from update_data import main as update_lottery_data
+from lotterypython.taiwan_lottery import TaiwanLottery
+from lotterypython.update_data import main as update_lottery_data
 
 # type = 1 大樂透， type=2 威力彩
 # http://www.9800.com.tw/statistics.asp 一般順
