@@ -26,7 +26,7 @@ python update_data.py --type super  # Update 威力彩 (superlotto638)
 the day after the last stored draw and `end` to today's date when querying
 `lot539.com`.
 
-The script uses `taiwan_lottery.py` to fetch draw results from [lot539.com](https://www.lot539.com), parse the draw period, date, numbers and special number, then append the results to the appropriate worksheets.
+The script uses `taiwan_lottery.py` to fetch draw results from [lot539.com](https://www.lot539.com), parse the draw period, date, numbers and special number, then append the results to the appropriate worksheets. Draws are sorted by period in ascending order before writing so that IDs and periods grow chronologically.
 
 Each time data is fetched, the new rows are also appended to local CSV files
 named `<type>_sequence.csv` and `<type>_sorted.csv` (where `<type>` is `big` or

@@ -78,6 +78,8 @@ def main(lotto_type: str) -> None:
     end_date = datetime.today().strftime('%Y-%m-%d')
 
     draws = tl.get_latest_draws(lotto_type, start=start_date, end=end_date)
+    # Ensure chronological order so IDs and periods increase over time
+    draws.sort(key=lambda d: int(d.period))
 
     sequence_rows = []
     sorted_rows = []
