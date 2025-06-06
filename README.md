@@ -5,13 +5,18 @@ This project fetches Taiwan lottery results and stores them in Google Sheets.
 ## Requirements
 - Python 3.9+
 - `gspread`, `oauth2client`, `cloudscraper`, `beautifulsoup4`
-- A Google service account JSON placed as `credentials.json`
+- A Google service account JSON placed as `credentials.json` (provide separately)
 
-Install dependencies using `pip`:
+## Environment Setup
+Install the required Python packages using `pip` or `poetry`:
 
 ```bash
 pip install gspread oauth2client cloudscraper beautifulsoup4 requests
+# or
+poetry add gspread oauth2client cloudscraper beautifulsoup4 requests && poetry install
 ```
+
+Place your Google service account JSON in the project root as `credentials.json`. This file is not included in the repository.
 
 ## Updating Data
 
