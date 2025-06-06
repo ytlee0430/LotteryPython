@@ -57,9 +57,9 @@ def main(lotto_type: str) -> None:
     scope = ['https://spreadsheets.google.com/feeds']
     creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     client = gspread.authorize(creds)
-    sequence_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
-        .worksheet(lotteryTypeAndTitleDict[lotto_type]+"-"+"落球順")
     sorted_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
+        .worksheet(lotteryTypeAndTitleDict[lotto_type]+"-"+"落球順")
+    sequence_sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ")\
         .worksheet(lotteryTypeAndTitleDict[lotto_type]+"-"+"一般順")
 
     all_record_sequence = sequence_sheet.get_all_records()
