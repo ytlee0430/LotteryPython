@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 
 Python-3.11.9
+credentials.json

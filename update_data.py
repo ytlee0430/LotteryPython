@@ -107,7 +107,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--type",
         choices=["big", "super"],
-        default="super",
+        default="big",
         help="Lottery type: big (lotto649) or super (superlotto638)",
     )
     args = parser.parse_args()
