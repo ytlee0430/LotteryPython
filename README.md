@@ -22,24 +22,18 @@ pip install gspread oauth2client cloudscraper beautifulsoup4 requests
 
 ## Updating Data
 
-Use `update_data.py` to append the latest draws to Google Sheets. Specify the lottery type with `--type`:
+Use the package to append the latest draws to Google Sheets. Specify the lottery type with `--type`:
 
 ```bash
-python update_data.py --type big    # Update 大樂透 (lotto649)
-python update_data.py --type super  # Update 威力彩 (superlotto638)
+python -m lotterypython --update --type big    # Update 大樂透 (lotto649)
+python -m lotterypython --update --type super  # Update 威力彩 (superlotto638)
 ```
 
-You can also run the same update via `main.py`:
-
-```bash
-python main.py --update --type big
-```
-
-`update_data.py` determines the request range automatically. It sets `start` to
+`lotterypython.update_data` determines the request range automatically. It sets `start` to
 the day after the last stored draw and `end` to today's date when querying
 `lot539.com`.
 
-The script uses `taiwan_lottery.py` to fetch draw results from [lot539.com](https://www.lot539.com), parse the draw period, date, numbers and special number, then append the results to the appropriate worksheets. Draws are sorted by period in ascending order before writing so that IDs and periods grow chronologically.
+The script uses `lotterypython.taiwan_lottery` to fetch draw results from [lot539.com](https://www.lot539.com), parse the draw period, date, numbers and special number, then append the results to the appropriate worksheets. Draws are sorted by period in ascending order before writing so that IDs and periods grow chronologically.
 
 Each time data is fetched, the new rows are also appended to local CSV files
 named `<type>_sequence.csv` and `<type>_sorted.csv` (where `<type>` is `big` or

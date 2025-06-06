@@ -7,7 +7,7 @@ from pathlib import Path
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from taiwan_lottery import TaiwanLottery
+from .taiwan_lottery import TaiwanLottery
 from lottery_data import LotteryData
 
 
