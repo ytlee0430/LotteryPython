@@ -1,7 +1,19 @@
+# -*- coding: utf-8 -*-
+"""Main entry for lottery utilities.
+
+This script can update lottery draw data and also contains legacy
+analysis code. Use ``--update`` with ``--type`` to append the latest
+results to Google Sheets.
+"""
+
 from numpy import append
 from pandas import DataFrame
 from pandas.plotting import scatter_matrix
 from matplotlib import pyplot
+from datetime import datetime, timedelta
+import argparse
+import csv
+from pathlib import Path
 # from sklearn.model_selection import train_test_split
 # from sklearn.model_selection import cross_val_score
 # from sklearn.model_selection import StratifiedKFold
@@ -16,6 +28,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 from bs4 import BeautifulSoup
 import requests
 
+from taiwan_lottery import TaiwanLottery
+from update_data import main as update_lottery_data
 
 # type = 1 大樂透， type=2 威力彩
 # http://www.9800.com.tw/statistics.asp 一般順
@@ -131,3 +145,33 @@ if isNeedUpdate:
 #     else:
 #         predictions = model.predict(array[len(array)-1:len(array), 3:9])
 #     print(predictions)
+
+
+def _legacy_analysis():
+    """Placeholder for the original analysis code."""
+    pass
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Lottery utilities")
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Fetch latest draws and append to Google Sheets",
+    )
+    parser.add_argument(
+        "--type",
+        choices=["big", "super"],
+        default="big",
+        help="Lottery type: big (lotto649) or super (superlotto638)",
+    )
+    args = parser.parse_args()
+
+    if args.update:
+        update_lottery_data(args.type)
+    else:
+        _legacy_analysis()
+
+
+if __name__ == "__main__":
+    main()
