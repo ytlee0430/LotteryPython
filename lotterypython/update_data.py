@@ -64,6 +64,25 @@ def main(lotto_type: str) -> None:
     all_record_sequence = sequence_sheet.get_all_records()
     lottery_data = LotteryData(lotto_type, [], [])
 
+    # Initialize local CSVs with existing sheet data if they don't exist yet
+    seq_path = Path(__file__).resolve().parent / f"{lotto_type}_sequence.csv"
+    sort_path = Path(__file__).resolve().parent / f"{lotto_type}_sorted.csv"
+
+    if not seq_path.exists():
+        with seq_path.open("w", newline="", encoding="utf-8") as fp:
+            writer = csv.writer(fp)
+            writer.writerow(CSV_HEADER)
+            for rec in all_record_sequence:
+                writer.writerow([rec[h] for h in CSV_HEADER])
+
+    if not sort_path.exists():
+        all_record_sorted = sorted_sheet.get_all_records()
+        with sort_path.open("w", newline="", encoding="utf-8") as fp:
+            writer = csv.writer(fp)
+            writer.writerow(CSV_HEADER)
+            for rec in all_record_sorted:
+                writer.writerow([rec[h] for h in CSV_HEADER])
+
     if not all_record_sequence:
         latest_id = 0
         latest_period = 0
