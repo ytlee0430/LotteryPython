@@ -45,6 +45,19 @@ string. Any leading `'` character from the original draw period is removed and
 the value is reformatted using `period[:3] + period[-3:]` before being
 appended.
 
+## LSTM Analysis
+
+An experimental script is provided to generate number predictions using an
+LSTM neural network. It trains on the historical draws in
+`lotterypython/big_sequence.csv` and prints a suggested set of numbers:
+
+```bash
+python predict/lotto_predict_lstm.py
+```
+
+The model is very small and intended only as a demonstration, so the output
+should not be considered accurate.
+
 
 ## License
 
