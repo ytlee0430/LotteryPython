@@ -16,31 +16,32 @@ def load_data(path=CSV_FILE):
     return pd.read_csv(path)
 
 
-def _feature(past):
-    counts = np.zeros(49, dtype=np.float32)
+def _feature(past, max_num):
+    counts = np.zeros(max_num, dtype=np.float32)
     for col in COLUMNS:
-        counts += np.bincount(past[col], minlength=50)[1:]
+        counts += np.bincount(past[col], minlength=max_num + 1)[1:]
     return counts
 
 
-def _target(row):
-    t = np.zeros(49, dtype=int)
+def _target(row, max_num):
+    t = np.zeros(max_num, dtype=int)
     for n in row[COLUMNS]:
         t[n - 1] = 1
     return t
 
 
-def build_dataset(df, history=HISTORY):
+def build_dataset(df, history=HISTORY, max_num=49):
     X, y = [], []
     for i in range(history, len(df)):
-        X.append(_feature(df.iloc[i - history:i]))
-        y.append(_target(df.iloc[i]))
+        X.append(_feature(df.iloc[i - history:i], max_num))
+        y.append(_target(df.iloc[i], max_num))
     return np.array(X), np.array(y)
 
 
 def predict_algorithms(df):
-    X, y = build_dataset(df)
-    last_feat = _feature(df.iloc[-HISTORY:]).reshape(1, -1)
+    max_num = int(df[COLUMNS].max().max())
+    X, y = build_dataset(df, max_num=max_num)
+    last_feat = _feature(df.iloc[-HISTORY:], max_num).reshape(1, -1)
 
     models = {
         "RandomForest": MultiOutputClassifier(RandomForestClassifier(n_estimators=200, random_state=42)),
@@ -52,7 +53,13 @@ def predict_algorithms(df):
     for name, model in models.items():
         model.fit(X, y)
         probs = model.predict_proba(last_feat)
-        prob_vec = np.array([p[:, 1] for p in probs]).flatten()
+        prob_vec = []
+        for p in probs:
+            if p.shape[1] == 2:
+                prob_vec.append(p[0, 1])
+            else:
+                prob_vec.append(0.0)
+        prob_vec = np.array(prob_vec)
         nums = np.argsort(prob_vec)[-6:][::-1] + 1
         results[name] = nums.tolist()
 
