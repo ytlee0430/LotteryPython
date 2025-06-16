@@ -70,4 +70,3 @@ if __name__ == "__main__":
     print("===== Predictions (for reference only) =====")
     for name, nums in results.items():
         print(f"{name}: {sorted(nums)} + SP:{special}")
-    print("賭博成癮請洽博弈專線 0800-700-676")
