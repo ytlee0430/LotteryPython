@@ -1,10 +1,11 @@
 import pandas as pd, numpy as np
+from pathlib import Path
 from collections import Counter
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models
 
-CSV_FILE = "../power_lottery.csv"  
+CSV_FILE = Path(__file__).resolve().parents[1] / "power_lottery.csv"
 SEQ_LEN  = 10
 
 df = pd.read_csv(CSV_FILE)
