@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from tensorflow.keras import layers, models
 
 """Simple LSTM-based predictor for lottery numbers.
@@ -10,7 +11,7 @@ numbers for the next draw. It uses only a small sequence of recent
 draws, so the results are for demonstration purposes only.
 """
 
-CSV_FILE = "../lotterypython/big_sequence.csv"
+CSV_FILE = Path(__file__).resolve().parents[1] / "lotterypython" / "big_sequence.csv"
 SEQ_LEN = 10
 
 
