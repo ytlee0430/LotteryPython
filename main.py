@@ -18,8 +18,6 @@ def _legacy_analysis(lotto_type: str) -> None:
     printed to stdout.
     """
 
-    import sys
-    import subprocess
     from pathlib import Path
 
     import pandas as pd
@@ -28,6 +26,8 @@ def _legacy_analysis(lotto_type: str) -> None:
 
     from predict.lotto_predict_hot_50 import predict_hot50
     from predict.lotto_predict_rf_gb_knn import predict_algorithms
+    from predict.lotto_predict_lstm import predict_lstm
+    from predict.lotto_predict_LSTMRF import predict_lstm_rf
     from predict import lotto_predict_radom
 
     from lotterypython.update_data import lotteryTypeAndTitleDict
@@ -69,13 +69,18 @@ def _legacy_analysis(lotto_type: str) -> None:
     )
     df.to_csv(csv_path, index=False)
 
-    subprocess.run([sys.executable, str(Path("predict/lotto_predict_lstm.py"))], check=False)
+    nums_lstm, sp_lstm = predict_lstm(df)
+    print("\n===== LSTM prediction =====")
+    print("numbers:", nums_lstm)
+    print("special:", sp_lstm)
 
     power_csv = Path("power_lottery.csv")
     df.to_csv(power_csv, index=False)
-    lstm_rf = Path("predict/lotto_predict_LSTMRF.py")
-    if lstm_rf.exists():
-        subprocess.run([sys.executable, str(lstm_rf)], check=False)
+    nums_ai, sp_ai = predict_lstm_rf(df)
+    print("\n===== AI result =====")
+    print("numbers :", nums_ai)
+    print("sp  :", sp_ai)
+    print("=======================")
 
 
 def main() -> None:

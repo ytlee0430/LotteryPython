@@ -13,6 +13,7 @@ draws, so the results are for demonstration purposes only.
 
 CSV_FILE = Path(__file__).resolve().parents[1] / "lotterypython" / "big_sequence.csv"
 SEQ_LEN = 10
+COLUMNS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]
 
 
 def encode(nums):
@@ -22,13 +23,18 @@ def encode(nums):
     return v
 
 
-def load_features():
-    df = pd.read_csv(CSV_FILE)
+def _features_from_df(df: pd.DataFrame) -> np.ndarray:
+    """Return encoded number vectors for each row of ``df``."""
     feats = []
     for _, row in df.iterrows():
-        nums = row[["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]].tolist()
+        nums = row[COLUMNS].tolist()
         feats.append(encode(nums))
     return np.stack(feats)
+
+
+def load_features():
+    df = pd.read_csv(CSV_FILE)
+    return _features_from_df(df)
 
 
 def build_sequences(feats):
@@ -40,8 +46,9 @@ def build_sequences(feats):
     return np.array(X), np.array(y)
 
 
-if __name__ == "__main__":
-    feats = load_features()
+def predict_lstm(df: pd.DataFrame):
+    """Train a small LSTM model on ``df`` and return predicted numbers."""
+    feats = _features_from_df(df)
     X, y = build_sequences(feats)
 
     split = int(len(X) * 0.9)
@@ -50,10 +57,10 @@ if __name__ == "__main__":
 
     model = models.Sequential(
         [
-            layers.Input(shape=(SEQ_LEN, 49)),
+            layers.Input(shape=(SEQ_LEN, feats.shape[-1])),
             layers.LSTM(64),
             layers.Dense(128, activation="relu"),
-            layers.Dense(49, activation="sigmoid"),
+            layers.Dense(feats.shape[-1], activation="sigmoid"),
         ]
     )
     model.compile("adam", "binary_crossentropy")
@@ -65,7 +72,13 @@ if __name__ == "__main__":
     main_numbers = sorted(top7[:6])
     special = int(top7[6])
 
+    return main_numbers, special
+
+
+if __name__ == "__main__":
+    df = pd.read_csv(CSV_FILE)
+    nums, sp = predict_lstm(df)
     print("\n===== LSTM prediction =====")
-    print("numbers:", main_numbers)
-    print("special:", special)
+    print("numbers:", nums)
+    print("special:", sp)
     print("==========================")
