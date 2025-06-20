@@ -49,6 +49,29 @@ CSV_HEADER = [
 ]
 
 
+def _sync_csv_with_sheet(path: Path, records: list[dict]):
+    """Ensure local CSV contains all rows from the given sheet records."""
+    if not path.exists():
+        with path.open("w", newline="", encoding="utf-8") as fp:
+            writer = csv.writer(fp)
+            writer.writerow(CSV_HEADER)
+            for rec in records:
+                writer.writerow([rec[h] for h in CSV_HEADER])
+        return
+
+    # Gather existing IDs in the CSV
+    with path.open("r", newline="", encoding="utf-8") as fp:
+        reader = csv.DictReader(fp)
+        existing = {row["ID"] for row in reader}
+
+    missing = [rec for rec in records if str(rec["ID"]) not in existing]
+    if missing:
+        with path.open("a", newline="", encoding="utf-8") as fp:
+            writer = csv.writer(fp)
+            for rec in missing:
+                writer.writerow([rec[h] for h in CSV_HEADER])
+
+
 def main(lotto_type: str) -> None:
     tl = TaiwanLottery()
 
@@ -62,26 +85,15 @@ def main(lotto_type: str) -> None:
         .worksheet(lotteryTypeAndTitleDict[lotto_type]+"-"+"一般順")
 
     all_record_sequence = sequence_sheet.get_all_records()
+    all_record_sorted = sorted_sheet.get_all_records()
     lottery_data = LotteryData(lotto_type, [], [])
 
-    # Initialize local CSVs with existing sheet data if they don't exist yet
     seq_path = Path(__file__).resolve().parent / f"{lotto_type}_sequence.csv"
     sort_path = Path(__file__).resolve().parent / f"{lotto_type}_sorted.csv"
 
-    if not seq_path.exists():
-        with seq_path.open("w", newline="", encoding="utf-8") as fp:
-            writer = csv.writer(fp)
-            writer.writerow(CSV_HEADER)
-            for rec in all_record_sequence:
-                writer.writerow([rec[h] for h in CSV_HEADER])
-
-    if not sort_path.exists():
-        all_record_sorted = sorted_sheet.get_all_records()
-        with sort_path.open("w", newline="", encoding="utf-8") as fp:
-            writer = csv.writer(fp)
-            writer.writerow(CSV_HEADER)
-            for rec in all_record_sorted:
-                writer.writerow([rec[h] for h in CSV_HEADER])
+    # Ensure local CSVs contain all records currently stored in Google Sheets
+    _sync_csv_with_sheet(seq_path, all_record_sequence)
+    _sync_csv_with_sheet(sort_path, all_record_sorted)
 
     if not all_record_sequence:
         latest_id = 0
