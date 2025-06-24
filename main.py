@@ -7,6 +7,7 @@ results to Google Sheets.
 """
 
 import argparse
+from typing import Callable
 from lotterypython.update_data import main as update_lottery_data
 
 def _legacy_analysis(lotto_type: str) -> None:
@@ -50,37 +51,64 @@ def _legacy_analysis(lotto_type: str) -> None:
 
     today_index = len(df)
 
-    main_nums, special = predict_hot50(df, today_index)
-    print("===== Hot-50 prediction =====")
-    print("numbers:", sorted(main_nums))
-    print("special:", special)
+    steps: list[tuple[str, Callable]] = [
+        ("Hot-50 prediction", lambda: predict_hot50(df, today_index)),
+        ("RF/GB/KNN prediction", lambda: predict_algorithms(df)),
+        (
+            "Random prediction",
+            lambda: (
+                sorted(lotto_predict_radom.numbers_1_to_38),
+                lotto_predict_radom.number_1_to_7,
+            ),
+        ),
+        ("LSTM prediction", lambda: predict_lstm(df)),
+        ("AI result", lambda: predict_lstm_rf(df)),
+    ]
 
-    results, sp_rf = predict_algorithms(df)
-    print("\n===== RF/GB/KNN prediction =====")
-    for name, nums in results.items():
-        print(f"{name}: {sorted(nums)} + SP:{sp_rf}")
+    outputs: list[str] = []
+    total = len(steps)
+    for idx, (title, func) in enumerate(steps, 1):
+        print(f"[{idx}/{total}] Running {title}...")
+        result = func()
 
-    print("\n===== Random prediction =====")
-    print("numbers:", sorted(lotto_predict_radom.numbers_1_to_38))
-    print("special:", lotto_predict_radom.number_1_to_7)
+        if title == "Hot-50 prediction":
+            nums, sp = result
+            outputs.append("===== Hot-50 prediction =====")
+            outputs.append(f"numbers: {sorted(nums)}")
+            outputs.append(f"special: {sp}")
+        elif title == "RF/GB/KNN prediction":
+            preds, sp_rf = result
+            outputs.append("\n===== RF/GB/KNN prediction =====")
+            for name, nums in preds.items():
+                outputs.append(f"{name}: {sorted(nums)} + SP:{sp_rf}")
+        elif title == "Random prediction":
+            nums, sp = result
+            outputs.append("\n===== Random prediction =====")
+            outputs.append(f"numbers: {nums}")
+            outputs.append(f"special: {sp}")
+        elif title == "LSTM prediction":
+            nums, sp = result
+            outputs.append("\n===== LSTM prediction =====")
+            outputs.append(f"numbers: {nums}")
+            outputs.append(f"special: {sp}")
+        elif title == "AI result":
+            nums, sp = result
+            outputs.append("\n===== AI result =====")
+            outputs.append(f"numbers : {nums}")
+            outputs.append(f"sp  : {sp}")
+            outputs.append("=======================")
 
     csv_path = Path("lotterypython") / (
         "big_sequence.csv" if lotto_type == "big" else "super_sequence.csv"
     )
     df.to_csv(csv_path, index=False)
 
-    nums_lstm, sp_lstm = predict_lstm(df)
-    print("\n===== LSTM prediction =====")
-    print("numbers:", nums_lstm)
-    print("special:", sp_lstm)
-
     power_csv = Path("power_lottery.csv")
     df.to_csv(power_csv, index=False)
-    nums_ai, sp_ai = predict_lstm_rf(df)
-    print("\n===== AI result =====")
-    print("numbers :", nums_ai)
-    print("sp  :", sp_ai)
-    print("=======================")
+
+    print("-" * 20)
+    for line in outputs:
+        print(line)
 
 
 def main() -> None:
