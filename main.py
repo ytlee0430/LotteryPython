@@ -9,7 +9,7 @@ results to Google Sheets.
 import argparse
 from lotterypython.update_data import main as update_lottery_data
 
-def _legacy_analysis(lotto_type: str) -> None:
+def _legacy_analysis(lotto_type: str, *, save_results: bool = False) -> None:
     """Run prediction scripts using Google Sheet data.
 
     This function downloads draw history from Google Sheets for the given
@@ -29,6 +29,7 @@ def _legacy_analysis(lotto_type: str) -> None:
     from predict.lotto_predict_lstm import predict_lstm
     from predict.lotto_predict_LSTMRF import predict_lstm_rf
     from predict import lotto_predict_radom
+    from lotterypython.analysis_sheet import append_analysis_results
 
     from lotterypython.update_data import lotteryTypeAndTitleDict
 
@@ -50,19 +51,30 @@ def _legacy_analysis(lotto_type: str) -> None:
 
     today_index = len(df)
 
+    predictions = []
+
     main_nums, special = predict_hot50(df, today_index)
     print("===== Hot-50 prediction =====")
     print("numbers:", sorted(main_nums))
     print("special:", special)
+    predictions.append(("Hot-50", sorted(main_nums), int(special)))
 
     results, sp_rf = predict_algorithms(df)
     print("\n===== RF/GB/KNN prediction =====")
     for name, nums in results.items():
         print(f"{name}: {sorted(nums)} + SP:{sp_rf}")
+        predictions.append((name, sorted(nums), int(sp_rf)))
 
     print("\n===== Random prediction =====")
     print("numbers:", sorted(lotto_predict_radom.numbers_1_to_38))
     print("special:", lotto_predict_radom.number_1_to_7)
+    predictions.append(
+        (
+            "Random",
+            sorted(lotto_predict_radom.numbers_1_to_38),
+            int(lotto_predict_radom.number_1_to_7),
+        )
+    )
 
     csv_path = Path("lotterypython") / (
         "big_sequence.csv" if lotto_type == "big" else "super_sequence.csv"
@@ -73,6 +85,7 @@ def _legacy_analysis(lotto_type: str) -> None:
     print("\n===== LSTM prediction =====")
     print("numbers:", nums_lstm)
     print("special:", sp_lstm)
+    predictions.append(("LSTM", nums_lstm, int(sp_lstm)))
 
     power_csv = Path("power_lottery.csv")
     df.to_csv(power_csv, index=False)
@@ -81,6 +94,10 @@ def _legacy_analysis(lotto_type: str) -> None:
     print("numbers :", nums_ai)
     print("sp  :", sp_ai)
     print("=======================")
+    predictions.append(("LSTM-RF", nums_ai, int(sp_ai)))
+
+    if save_results:
+        append_analysis_results(predictions, lotto_type)
 
 
 def main() -> None:
@@ -96,12 +113,17 @@ def main() -> None:
         default="big",
         help="Lottery type: big (lotto649) or super (superlotto638)",
     )
+    parser.add_argument(
+        "--save-results",
+        action="store_true",
+        help="Append prediction results to the Google Sheet",
+    )
     args = parser.parse_args()
 
     if args.update:
         update_lottery_data(args.type)
     else:
-        _legacy_analysis(args.type)
+        _legacy_analysis(args.type, save_results=args.save_results)
 
 
 if __name__ == "__main__":
