@@ -45,6 +45,15 @@ string. Any leading `'` character from the original draw period is removed and
 the value is reformatted using `period[:3] + period[-3:]` before being
 appended.
 
+To save prediction results from the built-in analysis tools, omit
+`--update` and pass `--save-results`:
+
+```bash
+python -m lotterypython --type big --save-results
+```
+
+The results are appended to the `分析結果` worksheet of the same Google Sheet.
+
 ## LSTM Analysis
 
 An experimental script is provided to generate number predictions using an
