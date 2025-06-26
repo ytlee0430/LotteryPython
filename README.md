@@ -67,6 +67,26 @@ python predict/lotto_predict_lstm.py
 The model is very small and intended only as a demonstration, so the output
 should not be considered accurate.
 
+## Docker
+
+A `Dockerfile` is included for running the utilities without installing
+dependencies locally.
+
+Build the image:
+
+```bash
+docker build -t lottery-python .
+```
+
+Place your Google service account JSON as `credentials.json` in the build
+context or mount it when running. Pass any arguments supported by
+`lotterypython`:
+
+```bash
+docker run --rm -v $(pwd)/credentials.json:/app/credentials.json \
+  lottery-python --update --type big
+```
+
 
 ## License
 
