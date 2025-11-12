@@ -50,20 +50,33 @@ def _legacy_analysis(lotto_type: str, *, save_results: bool = False) -> None:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
     today_index = len(df)
+    period_values = (
+        df["Period"].dropna().astype(str).str.strip() if "Period" in df.columns else []
+    )
+    numeric_periods = []
+    for value in period_values:
+        digits_only = "".join(ch for ch in str(value) if ch.isdigit())
+        if digits_only:
+            numeric_periods.append(digits_only)
+    if numeric_periods:
+        max_len = max(len(p) for p in numeric_periods)
+        next_period = f"{max(int(p) for p in numeric_periods) + 1:0{max_len}d}"
+    else:
+        next_period = ""
 
-    predictions = []
+    predictions: list[tuple[str, str, list[int], int]] = []
 
     main_nums, special = predict_hot50(df, today_index)
     print("===== Hot-50 prediction =====")
     print("numbers:", sorted(main_nums))
     print("special:", special)
-    predictions.append(("Hot-50", sorted(main_nums), int(special)))
+    predictions.append(("Hot-50", next_period, sorted(main_nums), int(special)))
 
     results, sp_rf = predict_algorithms(df)
     print("\n===== RF/GB/KNN prediction =====")
     for name, nums in results.items():
         print(f"{name}: {sorted(nums)} + SP:{sp_rf}")
-        predictions.append((name, sorted(nums), int(sp_rf)))
+        predictions.append((name, next_period, sorted(nums), int(sp_rf)))
 
     print("\n===== Random prediction =====")
     print("numbers:", sorted(lotto_predict_radom.numbers_1_to_38))
@@ -71,6 +84,7 @@ def _legacy_analysis(lotto_type: str, *, save_results: bool = False) -> None:
     predictions.append(
         (
             "Random",
+            next_period,
             sorted(lotto_predict_radom.numbers_1_to_38),
             int(lotto_predict_radom.number_1_to_7),
         )
@@ -85,7 +99,7 @@ def _legacy_analysis(lotto_type: str, *, save_results: bool = False) -> None:
     print("\n===== LSTM prediction =====")
     print("numbers:", nums_lstm)
     print("special:", sp_lstm)
-    predictions.append(("LSTM", nums_lstm, int(sp_lstm)))
+    predictions.append(("LSTM", next_period, nums_lstm, int(sp_lstm)))
 
     power_csv = Path("power_lottery.csv")
     df.to_csv(power_csv, index=False)
@@ -94,7 +108,7 @@ def _legacy_analysis(lotto_type: str, *, save_results: bool = False) -> None:
     print("numbers :", nums_ai)
     print("sp  :", sp_ai)
     print("=======================")
-    predictions.append(("LSTM-RF", nums_ai, int(sp_ai)))
+    predictions.append(("LSTM-RF", next_period, nums_ai, int(sp_ai)))
 
     if save_results:
         append_analysis_results(predictions, lotto_type)
