@@ -54,6 +54,36 @@ python -m lotterypython --type big --save-results
 
 The results are appended to the `分析結果` worksheet of the same Google Sheet.
 
+## macOS Scheduling Script
+
+For automated updates on macOS, a helper script is available at
+`scripts/run_lottery_schedule.sh`. The script checks the current weekday and
+runs the appropriate commands:
+
+- Every Tuesday and Friday it executes:
+  - `python -m lotterypython --update --type big`
+  - `python -m lotterypython --type big --save-results`
+- Every Monday and Thursday it executes:
+  - `python -m lotterypython --update --type super`
+  - `python -m lotterypython --type super --save-results`
+
+To have these commands run automatically, schedule the script with `cron` or
+`launchd`. For example, to run the script daily at 9 AM with `cron`:
+
+```bash
+crontab -e
+```
+
+Add the following line (adjusting the path to the repository as needed):
+
+```cron
+0 9 * * 1-5 /usr/bin/env bash /path/to/LotteryPython/scripts/run_lottery_schedule.sh >> ~/Library/Logs/lotterypython.log 2>&1
+```
+
+The script skips days without scheduled draws, so running it Monday through
+Friday is safe. Set the `PYTHON_BIN` environment variable before the command if
+you need to use a specific Python interpreter.
+
 ## LSTM Analysis
 
 An experimental script is provided to generate number predictions using an
