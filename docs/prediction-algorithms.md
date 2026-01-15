@@ -2,16 +2,28 @@
 
 ## 演算法總覽
 
-LotteryPython 實作了 6 種預測演算法，涵蓋統計分析、傳統機器學習與深度學習方法。
+LotteryPython 實作了 11 種預測演算法，涵蓋統計分析、傳統機器學習、深度學習與集成方法。
+
+### 現有演算法
 
 | 演算法 | 類型 | 特點 | 檔案位置 |
 |--------|------|------|----------|
-| Hot-50 | 統計分析 | 簡單頻率分析 | `predict/lotto_predict_hot_50.py` |
+| Hot-50 | 統計分析 | 熱號頻率分析 | `predict/lotto_predict_hot_50.py` |
 | RandomForest | 傳統 ML | 集成學習 | `predict/lotto_predict_rf_gb_knn.py` |
 | GradientBoosting | 傳統 ML | 梯度提升 | `predict/lotto_predict_rf_gb_knn.py` |
 | KNN | 傳統 ML | 近鄰分類 | `predict/lotto_predict_rf_gb_knn.py` |
 | LSTM | 深度學習 | 序列建模 | `predict/lotto_predict_lstm.py` |
 | LSTM-RF | 混合式 | 深度學習+集成 | `predict/lotto_predict_LSTMRF.py` |
+
+### 新增演算法
+
+| 演算法 | 類型 | 特點 | 檔案位置 |
+|--------|------|------|----------|
+| Cold-50 | 統計分析 | 冷號頻率分析 | `predict/lotto_predict_cold_50.py` |
+| XGBoost | 傳統 ML | 極端梯度提升 | `predict/lotto_predict_xgboost.py` |
+| Markov Chain | 機率模型 | 號碼轉移機率 | `predict/lotto_predict_markov.py` |
+| Pattern Analysis | 統計分析 | 組合模式分析 | `predict/lotto_predict_pattern.py` |
+| Ensemble Voting | 集成方法 | 多模型加權投票 | `predict/lotto_predict_ensemble.py` |
 
 ---
 
@@ -314,3 +326,291 @@ from predict import lotto_predict_new
 def run_predictions(df):
     results['NewAlgorithm'] = lotto_predict_new.predict(df)
 ```
+
+---
+
+## 新增演算法詳細說明
+
+---
+
+## Cold-50 冷號分析
+
+### 原理
+基於「冷號回歸」假設：長期未出現的號碼可能即將出現（Hot-50 的互補策略）。
+
+### 演算法
+```python
+def predict(df):
+    # 取最近 50 期
+    recent_draws = df.tail(50)
+
+    # 收集所有已出現號碼
+    appeared_numbers = set()
+    for _, row in recent_draws.iterrows():
+        appeared_numbers.update([row['First'], row['Second'], ...])
+
+    # 計算各號碼最後出現距今期數
+    all_numbers = range(1, 50)  # 大樂透 1-49
+    last_seen = {}
+    for num in all_numbers:
+        last_seen[num] = calculate_last_appearance(df, num)
+
+    # 取最久未出現的 6 個號碼
+    coldest_6 = sorted(last_seen.keys(), key=lambda x: last_seen[x], reverse=True)[:6]
+
+    # 特別號：最久未出現的特別號
+    special = get_coldest_special(df)
+
+    return {'numbers': sorted(coldest_6), 'special': special}
+```
+
+### 優缺點
+- **優點**: 與 Hot-50 形成互補策略，覆蓋不同假設
+- **缺點**: 「賭徒謬誤」- 過去不影響未來獨立事件
+
+---
+
+## XGBoost 極端梯度提升
+
+### 原理
+XGBoost 是 GradientBoosting 的優化實作，具有更好的正則化、並行處理與缺失值處理能力。
+
+### 模型配置
+```python
+import xgboost as xgb
+from sklearn.multioutput import MultiOutputClassifier
+
+model = MultiOutputClassifier(
+    xgb.XGBClassifier(
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        use_label_encoder=False,
+        eval_metric='logloss'
+    )
+)
+```
+
+### 與 GradientBoosting 差異
+| 特性 | GradientBoosting | XGBoost |
+|------|------------------|---------|
+| 正則化 | 無內建 | L1/L2 正則化 |
+| 並行處理 | 否 | 是 |
+| 缺失值處理 | 需預處理 | 自動處理 |
+| 訓練速度 | 較慢 | 較快 |
+| 過擬合控制 | 較弱 | 較強 |
+
+### 預測流程
+1. 使用與 RandomForest 相同的特徵工程
+2. XGBoost 多輸出分類器訓練
+3. 特別號使用獨立 XGBoost 模型
+
+---
+
+## Markov Chain 馬可夫鏈
+
+### 原理
+將每期開獎視為狀態，分析號碼之間的轉移機率矩陣，預測下一期最可能出現的號碼。
+
+### 演算法
+```python
+import numpy as np
+
+def build_transition_matrix(df, num_range=49):
+    """建立號碼轉移機率矩陣"""
+    # 轉移矩陣 49x49
+    transition = np.zeros((num_range, num_range))
+
+    for i in range(len(df) - 1):
+        current_draw = get_numbers(df.iloc[i])
+        next_draw = get_numbers(df.iloc[i + 1])
+
+        # 記錄從 current 到 next 的轉移
+        for curr_num in current_draw:
+            for next_num in next_draw:
+                transition[curr_num - 1][next_num - 1] += 1
+
+    # 正規化為機率
+    row_sums = transition.sum(axis=1, keepdims=True)
+    transition_prob = np.divide(transition, row_sums,
+                                where=row_sums != 0)
+    return transition_prob
+
+def predict(df):
+    trans_matrix = build_transition_matrix(df)
+
+    # 取最近一期的號碼
+    last_draw = get_numbers(df.iloc[-1])
+
+    # 計算下一期各號碼的機率
+    next_probs = np.zeros(49)
+    for num in last_draw:
+        next_probs += trans_matrix[num - 1]
+
+    # 取機率最高的 6 個號碼
+    top_6_indices = np.argsort(next_probs)[-6:]
+    predicted = [i + 1 for i in top_6_indices]
+
+    return {'numbers': sorted(predicted), 'special': predict_special(df)}
+```
+
+### 優缺點
+- **優點**: 捕捉號碼間的時序關聯性
+- **缺點**: 假設一階馬可夫性質（僅依賴前一期）
+
+---
+
+## Pattern Analysis 組合模式分析
+
+### 原理
+分析開獎號碼的組合特徵模式，包括奇偶比、高低比、區間分布、連號等。
+
+### 特徵分析
+```python
+def analyze_patterns(numbers, num_range=49):
+    """分析號碼組合特徵"""
+    patterns = {}
+
+    # 1. 奇偶比 (odd:even)
+    odd_count = sum(1 for n in numbers if n % 2 == 1)
+    patterns['odd_even'] = (odd_count, 6 - odd_count)
+
+    # 2. 高低比 (high:low, 以 25 為界)
+    high_count = sum(1 for n in numbers if n > 24)
+    patterns['high_low'] = (high_count, 6 - high_count)
+
+    # 3. 區間分布 (分 5 區)
+    zones = [0] * 5  # 1-10, 11-20, 21-30, 31-40, 41-49
+    for n in numbers:
+        zone_idx = min((n - 1) // 10, 4)
+        zones[zone_idx] += 1
+    patterns['zones'] = zones
+
+    # 4. 連號數量
+    sorted_nums = sorted(numbers)
+    consecutive = 0
+    for i in range(len(sorted_nums) - 1):
+        if sorted_nums[i + 1] - sorted_nums[i] == 1:
+            consecutive += 1
+    patterns['consecutive'] = consecutive
+
+    # 5. 號碼總和
+    patterns['sum'] = sum(numbers)
+
+    return patterns
+
+def predict(df):
+    # 分析歷史模式分布
+    pattern_history = [analyze_patterns(get_numbers(row))
+                       for _, row in df.iterrows()]
+
+    # 找出最常見的模式組合
+    common_odd_even = most_common([p['odd_even'] for p in pattern_history])
+    common_zones = most_common_distribution([p['zones'] for p in pattern_history])
+    target_sum_range = get_common_sum_range(pattern_history)
+
+    # 依據目標模式生成號碼
+    predicted = generate_numbers_matching_pattern(
+        odd_even=common_odd_even,
+        zones=common_zones,
+        sum_range=target_sum_range
+    )
+
+    return {'numbers': sorted(predicted), 'special': predict_special(df)}
+```
+
+### 常見模式統計
+| 模式 | 最常見分布 | 出現機率 |
+|------|-----------|----------|
+| 奇偶比 | 3:3 | ~32% |
+| 高低比 | 3:3 | ~31% |
+| 連號 | 0-1 組 | ~75% |
+| 總和範圍 | 130-170 | ~60% |
+
+---
+
+## Ensemble Voting 集成投票法
+
+### 原理
+結合所有現有預測模型的結果，透過加權投票機制產生最終預測，利用「群眾智慧」提高準確度。
+
+### 演算法
+```python
+from collections import Counter
+
+def ensemble_predict(df, models, weights=None):
+    """
+    集成投票預測
+
+    參數:
+        df: 歷史資料
+        models: 預測模型列表
+        weights: 各模型權重（預設等權重）
+    """
+    if weights is None:
+        weights = [1.0] * len(models)
+
+    # 收集所有模型的預測結果
+    all_predictions = []
+    for model, weight in zip(models, weights):
+        result = model.predict(df)
+        all_predictions.append({
+            'numbers': result['numbers'],
+            'special': result['special'],
+            'weight': weight
+        })
+
+    # 加權投票 - 主號碼
+    number_votes = Counter()
+    for pred in all_predictions:
+        for num in pred['numbers']:
+            number_votes[num] += pred['weight']
+
+    # 取得票最高的 6 個號碼
+    top_6 = [num for num, _ in number_votes.most_common(6)]
+
+    # 加權投票 - 特別號
+    special_votes = Counter()
+    for pred in all_predictions:
+        special_votes[pred['special']] += pred['weight']
+
+    special = special_votes.most_common(1)[0][0]
+
+    return {'numbers': sorted(top_6), 'special': special}
+
+# 使用範例
+def predict(df):
+    from predict import (lotto_predict_hot_50, lotto_predict_rf_gb_knn,
+                         lotto_predict_lstm, lotto_predict_LSTMRF,
+                         lotto_predict_cold_50, lotto_predict_xgboost)
+
+    models = [
+        lotto_predict_hot_50,
+        lotto_predict_cold_50,
+        lotto_predict_rf_gb_knn,  # RandomForest
+        lotto_predict_xgboost,
+        lotto_predict_lstm,
+        lotto_predict_LSTMRF
+    ]
+
+    # 權重可依據歷史表現調整
+    # 例如 RandomForest 匹配率最高，給予較高權重
+    weights = [1.0, 0.8, 1.5, 1.3, 1.0, 1.2]
+
+    return ensemble_predict(df, models, weights)
+```
+
+### 權重調整策略
+| 策略 | 說明 |
+|------|------|
+| 等權重 | 所有模型權重相同 |
+| 歷史表現 | 依據匹配率調整權重 |
+| 動態權重 | 依據近期表現動態調整 |
+| 衰減權重 | 近期表現權重較高 |
+
+### 優缺點
+- **優點**: 綜合多種方法優勢，減少單一模型偏差
+- **缺點**: 計算成本較高（需執行所有模型）

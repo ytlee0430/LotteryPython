@@ -45,10 +45,15 @@ lotterypython/
 
 ```
 predict/
-├── lotto_predict_hot_50.py      # 頻率分析法
+├── lotto_predict_hot_50.py      # 頻率分析法（熱號）
+├── lotto_predict_cold_50.py     # 冷號分析法 [NEW]
 ├── lotto_predict_rf_gb_knn.py   # 傳統 ML 演算法
+├── lotto_predict_xgboost.py     # XGBoost 極端梯度提升 [NEW]
 ├── lotto_predict_lstm.py        # LSTM 神經網路
 ├── lotto_predict_LSTMRF.py      # 混合式模型
+├── lotto_predict_markov.py      # 馬可夫鏈 [NEW]
+├── lotto_predict_pattern.py     # 組合模式分析 [NEW]
+├── lotto_predict_ensemble.py    # 集成投票法 [NEW]
 └── lotto_predict_radom.py       # 隨機基準
 ```
 

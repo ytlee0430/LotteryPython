@@ -24,12 +24,21 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 - 雙向同步機制確保資料一致性
 
 ### 3. 預測分析
-- **Hot-50**: 頻率分析法
+
+#### 現有演算法
+- **Hot-50**: 頻率分析法（熱號策略）
 - **RandomForest**: 隨機森林分類器
 - **GradientBoosting**: 梯度提升分類器
 - **KNN**: K-近鄰演算法
 - **LSTM**: 長短期記憶神經網路
 - **LSTM-RF**: 混合式深度學習模型
+
+#### 新增演算法
+- **Ensemble Voting**: 集成投票法，結合多模型預測結果加權投票
+- **Cold-50**: 冷號分析法（Hot-50 的互補策略）
+- **XGBoost**: 極端梯度提升，優化版 GradientBoosting
+- **Markov Chain**: 馬可夫鏈，分析號碼轉移機率
+- **Pattern Analysis**: 組合模式分析（奇偶比、高低比、區間分布）
 
 ### 4. 使用介面
 - **Web UI**: Flask 網頁應用程式

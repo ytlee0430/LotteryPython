@@ -131,3 +131,10 @@ dmypy.json
 Python-3.11.9
 credentials.json
 get-pip.py
+.claude/
+.clinerules/
+.gemini/
+.roo/
+.windsurf/
+_bmad/
+.kilocodemodes

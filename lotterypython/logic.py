@@ -5,9 +5,14 @@ from lotterypython.update_data import lotteryTypeAndTitleDict
 from pathlib import Path
 
 from predict.lotto_predict_hot_50 import predict_hot50
+from predict.lotto_predict_cold_50 import predict_cold50
 from predict.lotto_predict_rf_gb_knn import predict_algorithms
+from predict.lotto_predict_xgboost import predict_xgboost
 from predict.lotto_predict_lstm import predict_lstm
 from predict.lotto_predict_LSTMRF import predict_lstm_rf
+from predict.lotto_predict_markov import predict_markov
+from predict.lotto_predict_pattern import predict_pattern
+from predict.lotto_predict_ensemble import predict_ensemble
 from predict import lotto_predict_radom
 
 def get_data_from_gsheet(lotto_type: str) -> pd.DataFrame:
@@ -67,6 +72,17 @@ def run_predictions(df: pd.DataFrame) -> dict:
     except Exception as e:
         results["Hot-50"] = {"error": str(e)}
 
+    # Cold-50
+    try:
+        nums_cold, sp_cold = predict_cold50(df, today_index)
+        results["Cold-50"] = {
+            "next_period": next_period,
+            "numbers": sorted(nums_cold),
+            "special": int(sp_cold)
+        }
+    except Exception as e:
+        results["Cold-50"] = {"error": str(e)}
+
     # RF/GB/KNN
     try:
         alg_results, sp_rf = predict_algorithms(df)
@@ -101,5 +117,49 @@ def run_predictions(df: pd.DataFrame) -> dict:
         }
     except Exception as e:
         results["LSTM-RF"] = {"error": str(e)}
-    
+
+    # XGBoost
+    try:
+        nums_xgb, sp_xgb = predict_xgboost(df, today_index)
+        results["XGBoost"] = {
+            "next_period": next_period,
+            "numbers": sorted(nums_xgb),
+            "special": int(sp_xgb)
+        }
+    except Exception as e:
+        results["XGBoost"] = {"error": str(e)}
+
+    # Markov Chain
+    try:
+        nums_markov, sp_markov = predict_markov(df, today_index)
+        results["Markov"] = {
+            "next_period": next_period,
+            "numbers": sorted(nums_markov),
+            "special": int(sp_markov)
+        }
+    except Exception as e:
+        results["Markov"] = {"error": str(e)}
+
+    # Pattern Analysis
+    try:
+        nums_pattern, sp_pattern = predict_pattern(df, today_index)
+        results["Pattern"] = {
+            "next_period": next_period,
+            "numbers": sorted(nums_pattern),
+            "special": int(sp_pattern)
+        }
+    except Exception as e:
+        results["Pattern"] = {"error": str(e)}
+
+    # Ensemble Voting
+    try:
+        nums_ensemble, sp_ensemble = predict_ensemble(df, today_index)
+        results["Ensemble"] = {
+            "next_period": next_period,
+            "numbers": sorted(nums_ensemble),
+            "special": int(sp_ensemble)
+        }
+    except Exception as e:
+        results["Ensemble"] = {"error": str(e)}
+
     return results
