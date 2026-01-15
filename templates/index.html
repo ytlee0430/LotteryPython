@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lottery Predictor</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        h1 { color: #333; }
+        .controls { background: #f9f9f9; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-weight: bold; color: #555; }
+        select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
+        .status-info { background: #e9ecef; color: #333; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-success { background: #d4edda; color: #155724; }
+        #results { margin-top: 20px; }
+        pre { white-space: pre-wrap; background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        .hidden { display: none; }
+        
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #f8f9fa; font-weight: 600; color: #333; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #f5f5f5; }
+        .special-num { color: #d63384; font-weight: bold; }
+        .error-text { color: #dc3545; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e9ecef; margin-right: 4px; font-size: 0.9em; }
+        
+        /* Sortable headers */
+        th.sortable { cursor: pointer; position: relative; user-select: none; }
+        th.sortable:hover { background-color: #e9ecef; }
+        th.sortable::after { content: '↕'; position: absolute; right: 5px; opacity: 0.3; }
+        th.asc::after { content: '↑'; opacity: 1; }
+        th.desc::after { content: '↓'; opacity: 1; }
+        
+        /* Number alignment */
+        .lotto-num { display: inline-block; width: 28px; text-align: center; margin-right: 4px; font-family: monospace; font-size: 1.1em; background: #e9ecef; border-radius: 50%; height: 28px; line-height: 28px; }
+        td.numbers-col { white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <h1>Lottery Predictor</h1>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="type">Lottery Type</label>
+            <select id="type">
+                <option value="super">Super Lottery (威力彩)</option>
+                <option value="big">Big Lottery (大樂透)</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="action">Action</label>
+            <select id="action">
+                <option value="predict">Predict (預測)</option>
+                <option value="update">Update Data (更新資料)</option>
+                <option value="combin">Combin (預測並存檔)</option>
+                <option value="history">History (歷史資料)</option>
+            </select>
+        </div>
+        
+        <div class="control-group" style="justify-content: flex-end;">
+            <button onclick="runAction()" id="runBtn">Run</button>
+        </div>
+    </div>
+    
+    <div id="status"></div>
+    <div id="results"></div>
+
+    <script>
+        async function runAction() {
+            const type = document.getElementById('type').value;
+            const action = document.getElementById('action').value;
+            const runBtn = document.getElementById('runBtn');
+            const resultsDiv = document.getElementById('results');
+            const statusDiv = document.getElementById('status');
+            
+            // Reset UI
+            resultsDiv.innerHTML = '';
+            statusDiv.className = 'status-info';
+            statusDiv.textContent = 'Processing...';
+            statusDiv.style.display = 'block';
+            runBtn.disabled = true;
+            runBtn.textContent = 'Running...';
+            
+            try {
+                const response = await fetch('/' + action, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: type })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unknown error occurred');
+                }
+                
+                statusDiv.className = 'status-success';
+                statusDiv.textContent = 'Success!';
+                
+                // Determine results to display
+                let displayData = data.results || data;
+                
+                // If it's just a success message (like from update), show it
+                if (data.message && !data.results) {
+                    resultsDiv.innerHTML = `<div class="status-success" style="margin-bottom: 20px;">${data.message}</div>`;
+                    
+                    if (action === 'update') {
+                         // Fetch history automatically
+                         try {
+                             const histResponse = await fetch('/history', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ type: type })
+                             });
+                             const histData = await histResponse.json();
+                             if (histData.history) {
+                                 renderHistory(histData.history);
+                             }
+                         } catch (e) {
+                             console.error("Failed to fetch history after update", e);
+                         }
+                    }
+                    return;
+                }
+
+                // If we have a message (like from combin), append it
+                if (data.message) {
+                    resultsDiv.innerHTML = `<div class="status-info" style="margin-bottom: 10px;">${data.message}</div>`;
+                }
+                
+                // Handle History Data
+                if (data.history) {
+                    renderHistory(data.history);
+                    return;
+                }
+
+                // Check if it looks like prediction results (object with algorithms)
+                const isPrediction = typeof displayData === 'object' && 
+                                   Object.values(displayData).some(val => val && (val.numbers || val.error));
+
+                if (isPrediction) {
+                    let tableHtml = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Algorithm</th>
+                                    <th>Next Period</th>
+                                    <th>Numbers</th>
+                                    <th>Special</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    for (const [algo, result] of Object.entries(displayData)) {
+                        tableHtml += `<tr><td><strong>${algo}</strong></td>`;
+                        
+                        if (result.error) {
+                            tableHtml += `<td colspan="3" class="error-text">Error: ${result.error}</td>`;
+                        } else {
+                            // Format numbers as badges or simple list
+                            const nums = Array.isArray(result.numbers) 
+                                ? result.numbers.map(n => `<span class="badge">${n}</span>`).join('') 
+                                : result.numbers;
+                                
+                            tableHtml += `
+                                <td>${result.next_period || '-'}</td>
+                                <td>${nums}</td>
+                                <td class="special-num">${result.special}</td>
+                            `;
+                        }
+                        tableHtml += `</tr>`;
+                    }
+                    
+                    tableHtml += `</tbody></table>`;
+                    resultsDiv.innerHTML += tableHtml;
+                } else {
+                    // Fallback for non-prediction data
+                    resultsDiv.innerHTML += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+                
+            } catch (error) {
+                statusDiv.className = 'status-error';
+                statusDiv.textContent = 'Error: ' + error.message;
+            } finally {
+                runBtn.disabled = false;
+                runBtn.textContent = 'Run';
+            }
+        }
+        
+        function renderHistory(rows) {
+            const resultsDiv = document.getElementById('results');
+            let tableHtml = `
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)" class="sortable">Period</th>
+                            <th onclick="sortTable(1)" class="sortable desc">Date</th>
+                            <th onclick="sortTable(2)" class="sortable">Numbers</th>
+                            <th onclick="sortTable(3)" class="sortable">Special</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            rows.forEach(row => {
+                const numbers = [row.First, row.Second, row.Third, row.Fourth, row.Fifth, row.Sixth]
+                    .filter(n => n !== undefined && n !== 0)
+                    .map(n => `<span class="lotto-num">${n}</span>`)
+                    .join('');
+                    
+                tableHtml += `
+                    <tr>
+                        <td>${row.Period}</td>
+                        <td>${row.Date || '-'}</td>
+                        <td class="numbers-col">${numbers}</td>
+                        <td class="special-num">${row.Special}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHtml += `</tbody></table>`;
+            resultsDiv.innerHTML += tableHtml;
+        }
+
+        function sortTable(n) {
+            const table = document.getElementById("historyTable");
+            if (!table) return;
+            const tbody = table.tBodies[0];
+            const rows = Array.from(tbody.rows);
+            const th = table.tHead.rows[0].cells[n];
+            
+            let asc = !th.classList.contains('asc');
+            
+            // Remove indicators
+            document.querySelectorAll("th.sortable").forEach(h => {
+                h.classList.remove("asc", "desc");
+            });
+            
+            th.classList.toggle('asc', asc);
+            th.classList.toggle('desc', !asc);
+            
+            rows.sort((a, b) => {
+                let x = a.cells[n].innerText.trim();
+                let y = b.cells[n].innerText.trim();
+                
+                // Try numeric (remove commas if any)
+                let xNum = parseFloat(x.replace(/,/g, ''));
+                let yNum = parseFloat(y.replace(/,/g, ''));
+                
+                // Check if valid numbers and NOT a date-like string (e.g. 2023-01-01 parses as 2023 but we want string sort for dates if not strict)
+                // Actually date string "2023-01-01" sorts correctly as string.
+                // Numbers list "1, 2, 3" will parse as 1. 
+                // We want to avoid parsing lists as numbers.
+                const isList = x.includes(','); 
+                
+                if (!isNaN(xNum) && !isNaN(yNum) && !isList && !x.includes('-')) {
+                    return asc ? xNum - yNum : yNum - xNum;
+                }
+                
+                return asc ? x.localeCompare(y) : y.localeCompare(x);
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        }
+    </script>
+</body>
+</html>

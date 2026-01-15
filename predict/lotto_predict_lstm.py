@@ -69,6 +69,7 @@ def predict_lstm(df: pd.DataFrame):
     latest = feats[-SEQ_LEN:][np.newaxis, ...]
     probs = model.predict(latest, verbose=0)[0]
     top7 = np.argsort(probs)[-7:][::-1] + 1
+    top7 = top7.tolist()
     main_numbers = sorted(top7[:6])
     special = int(top7[6])
 

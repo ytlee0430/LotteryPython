@@ -99,8 +99,26 @@ should not be considered accurate.
 
 ## Docker
 
-A `Dockerfile` is included for running the utilities without installing
-dependencies locally.
+A `Dockerfile` and `docker-compose.yml` are included for running the web application with Nginx.
+
+### Prerequisites
+
+1. Ensure you have Docker and Docker Compose installed.
+2. Place your Google service account JSON as `credentials.json` in the root directory.
+
+### Running with Docker Compose
+
+To start the web application and Nginx server:
+
+```bash
+docker-compose up -d --build
+```
+
+The application will be accessible at `http://localhost`.
+
+### Running Manually with Docker
+
+If you prefer to run only the application container:
 
 Build the image:
 
@@ -108,14 +126,13 @@ Build the image:
 docker build -t lottery-python .
 ```
 
-Place your Google service account JSON as `credentials.json` in the build
-context or mount it when running. Pass any arguments supported by
-`lotterypython`:
+Run the container (exposing port 3000):
 
 ```bash
-docker run --rm -v $(pwd)/credentials.json:/app/credentials.json \
-  lottery-python --update --type big
+docker run --rm -p 3000:3000 -v $(pwd)/credentials.json:/app/credentials.json lottery-python
 ```
+
+Access the application at `http://localhost:3000`.
 
 
 ## License

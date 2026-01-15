@@ -23,9 +23,16 @@ class TaiwanLottery:
             browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
         )
         self.headers = {
-            "User-Agent": "Mozilla/5.0",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                "Version/17.4 Safari/605.1.15"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Connection": "keep-alive",
         }
+
 
     def fetch_html(
         self,
@@ -42,6 +49,7 @@ class TaiwanLottery:
             parts.append(("end", end))
         if parts:
             url += "&" + "&".join(f"{k}={v}" for k, v in parts)
+        self.headers[ "Referer"] = f"{url}/lottery/{lottery_type}"
         res = self.scraper.get(url, headers=self.headers)
         res.raise_for_status()
         return res.text

@@ -17,98 +17,76 @@ def _legacy_analysis(lotto_type: str, *, save_results: bool = False) -> None:
     predictor in the :mod:`predict` package. The results of each predictor are
     printed to stdout.
     """
-
     from pathlib import Path
-
-    import pandas as pd
-    import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
-
-    from predict.lotto_predict_hot_50 import predict_hot50
-    from predict.lotto_predict_rf_gb_knn import predict_algorithms
-    from predict.lotto_predict_lstm import predict_lstm
-    from predict.lotto_predict_LSTMRF import predict_lstm_rf
-    from predict import lotto_predict_radom
     from lotterypython.analysis_sheet import append_analysis_results
+    from lotterypython.logic import get_data_from_gsheet, run_predictions
 
-    from lotterypython.update_data import lotteryTypeAndTitleDict
-
-    scope = ["https://spreadsheets.google.com/feeds"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-    client = gspread.authorize(creds)
-
-    sheet = client.open_by_key("1WApSh6XbBkcjAhDUyO8IvufhPHUX40MOIskl1qL89hQ").worksheet(
-        lotteryTypeAndTitleDict[lotto_type] + "-" + "落球順"
-    )
-    records = sheet.get_all_records()
-    if not records:
+    df = get_data_from_gsheet(lotto_type)
+    if df.empty:
         print("No data found in Google Sheet")
         return
 
-    df = pd.DataFrame(records)
-    for col in ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Special"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
-
-    today_index = len(df)
-    period_values = (
-        df["Period"].dropna().astype(str).str.strip() if "Period" in df.columns else []
-    )
-    numeric_periods = []
-    for value in period_values:
-        digits_only = "".join(ch for ch in str(value) if ch.isdigit())
-        if digits_only:
-            numeric_periods.append(digits_only)
-    if numeric_periods:
-        max_len = max(len(p) for p in numeric_periods)
-        next_period = f"{max(int(p) for p in numeric_periods) + 1:0{max_len}d}"
-    else:
-        next_period = ""
-
-    predictions: list[tuple[str, str, list[int], int]] = []
-
-    main_nums, special = predict_hot50(df, today_index)
-    print("===== Hot-50 prediction =====")
-    print("numbers:", sorted(main_nums))
-    print("special:", special)
-    predictions.append(("Hot-50", next_period, sorted(main_nums), int(special)))
-
-    results, sp_rf = predict_algorithms(df)
-    print("\n===== RF/GB/KNN prediction =====")
-    for name, nums in results.items():
-        print(f"{name}: {sorted(nums)} + SP:{sp_rf}")
-        predictions.append((name, next_period, sorted(nums), int(sp_rf)))
-
-    print("\n===== Random prediction =====")
-    print("numbers:", sorted(lotto_predict_radom.numbers_1_to_38))
-    print("special:", lotto_predict_radom.number_1_to_7)
-    predictions.append(
-        (
-            "Random",
-            next_period,
-            sorted(lotto_predict_radom.numbers_1_to_38),
-            int(lotto_predict_radom.number_1_to_7),
-        )
-    )
-
+    # Save CSVs to maintain legacy side effects
     csv_path = Path("lotterypython") / (
         "big_sequence.csv" if lotto_type == "big" else "super_sequence.csv"
     )
     df.to_csv(csv_path, index=False)
 
-    nums_lstm, sp_lstm = predict_lstm(df)
-    print("\n===== LSTM prediction =====")
-    print("numbers:", nums_lstm)
-    print("special:", sp_lstm)
-    predictions.append(("LSTM", next_period, nums_lstm, int(sp_lstm)))
-
     power_csv = Path("power_lottery.csv")
     df.to_csv(power_csv, index=False)
-    nums_ai, sp_ai = predict_lstm_rf(df)
-    print("\n===== AI result =====")
-    print("numbers :", nums_ai)
-    print("sp  :", sp_ai)
-    print("=======================")
-    predictions.append(("LSTM-RF", next_period, nums_ai, int(sp_ai)))
+
+    # Run all predictions
+    results = run_predictions(df)
+
+    predictions: list[tuple[str, str, list[int], int]] = []
+
+    # 1. Hot-50
+    if "Hot-50" in results and "error" not in results["Hot-50"]:
+        r = results["Hot-50"]
+        print("===== Hot-50 prediction =====")
+        print("numbers:", r["numbers"])
+        print("special:", r["special"])
+        predictions.append(("Hot-50", r["next_period"], r["numbers"], r["special"]))
+
+    # 2. RF/GB/KNN
+    print("\n===== RF/GB/KNN prediction =====")
+    for key in ["RandomForest", "GradientBoosting", "KNN"]:
+        if key in results and "error" not in results[key]:
+            r = results[key]
+            print(f"{key}: {r['numbers']} + SP:{r['special']}")
+            predictions.append((key, r["next_period"], r["numbers"], r["special"]))
+
+    # 3. Random
+    if "Random" in results and "error" not in results["Random"]:
+        r = results["Random"]
+        print("\n===== Random prediction =====")
+        print("numbers:", r["numbers"])
+        print("special:", r["special"])
+        predictions.append(
+            (
+                "Random",
+                r["next_period"],
+                r["numbers"],
+                r["special"],
+            )
+        )
+
+    # 4. LSTM
+    if "LSTM" in results and "error" not in results["LSTM"]:
+        r = results["LSTM"]
+        print("\n===== LSTM prediction =====")
+        print("numbers:", r["numbers"])
+        print("special:", r["special"])
+        predictions.append(("LSTM", r["next_period"], r["numbers"], r["special"]))
+
+    # 5. LSTM-RF
+    if "LSTM-RF" in results and "error" not in results["LSTM-RF"]:
+        r = results["LSTM-RF"]
+        print("\n===== AI result =====")
+        print("numbers :", r["numbers"])
+        print("sp  :", r["special"])
+        print("=======================")
+        predictions.append(("LSTM-RF", r["next_period"], r["numbers"], r["special"]))
 
     if save_results:
         append_analysis_results(predictions, lotto_type)

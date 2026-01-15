@@ -80,7 +80,7 @@ def predict_lstm_rf(df: pd.DataFrame):
     rf_spec.fit(Xtr_s, ytr_s)
     special = rf_spec.predict(feats[0].reshape(1, -1))[0]
 
-    return sorted(main6), int(special)
+    return sorted(main6.tolist()), int(special)
 
 
 if __name__ == "__main__":

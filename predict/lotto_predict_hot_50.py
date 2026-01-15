@@ -6,6 +6,7 @@ def predict_hot50(df, today_index):
     train = df.iloc[today_index - 50:today_index]
     nums = train[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].values.ravel()
     cnt = Counter(nums).most_common(6)
-    main = [n for n, _ in cnt]
+    main = [int(n) for n, _ in cnt]
     special = train['Special'].value_counts().idxmax()
+    special = int(special)
     return main, special
