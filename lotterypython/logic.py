@@ -153,7 +153,7 @@ def run_predictions(df: pd.DataFrame) -> dict:
 
     # Ensemble Voting
     try:
-        nums_ensemble, sp_ensemble = predict_ensemble(df, today_index)
+        nums_ensemble, sp_ensemble = predict_ensemble(df, today_index, previous_results=results)
         results["Ensemble"] = {
             "next_period": next_period,
             "numbers": sorted(nums_ensemble),

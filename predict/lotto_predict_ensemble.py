@@ -33,15 +33,40 @@ DEFAULT_WEIGHTS = {
 }
 
 
-def collect_predictions(df, today_index):
+def collect_predictions(df, today_index, previous_results=None):
     """
     Collect predictions from all available models.
+
+    Args:
+        df: DataFrame with historical lottery data
+        today_index: Current index for prediction
+        previous_results: Optional dict containing already calculated results
 
     Returns:
         list of dict: Each dict contains 'name', 'numbers', 'special', 'weight'
     """
     predictions = []
 
+    if previous_results:
+        # Use provided results instead of recalculating
+        for name, result in previous_results.items():
+            if name == "Ensemble" or "error" in result:
+                continue
+            
+            # Skip if result format is not as expected
+            if "numbers" not in result or "special" not in result:
+                continue
+
+            predictions.append({
+                "name": name,
+                "numbers": result["numbers"],
+                "special": result["special"],
+                "weight": DEFAULT_WEIGHTS.get(name, 1.0)
+            })
+        return predictions
+
+    # Fallback to calculating if no results provided
+    
     # Hot-50
     try:
         main_nums, special = predict_hot50(df, today_index)
@@ -191,7 +216,7 @@ def weighted_vote_special(predictions):
     return vote_counter.most_common(1)[0][0]
 
 
-def predict_ensemble(df, today_index, weights=None):
+def predict_ensemble(df, today_index, weights=None, previous_results=None):
     """
     Main ensemble voting prediction function.
 
@@ -199,6 +224,7 @@ def predict_ensemble(df, today_index, weights=None):
         df: DataFrame with historical lottery data
         today_index: Current index for prediction
         weights: Optional custom weights dict (model_name -> weight)
+        previous_results: Optional dict containing already calculated results
 
     Returns:
         tuple: (main_numbers, special_number)
@@ -208,10 +234,20 @@ def predict_ensemble(df, today_index, weights=None):
         DEFAULT_WEIGHTS.update(weights)
 
     # Collect all predictions
-    predictions = collect_predictions(df, today_index)
+    predictions = collect_predictions(df, today_index, previous_results)
 
     if not predictions:
-        raise ValueError("No predictions collected from any model")
+        # If no previous results and calculation failed, or just failed
+        if previous_results: 
+             # Try to calculate if previous_results were empty or invalid? 
+             # The user asked to use passed results, so maybe fallback is not needed if intended usage is passing results.
+             # But let's keep it safe. If previous_results yielded nothing, maybe we should try collecting again without it?
+             # For now, let's assume if previous_results is passed, it should have data.
+             # But to be robust:
+             predictions = collect_predictions(df, today_index)
+
+    if not predictions:
+         raise ValueError("No predictions collected from any model")
 
     # Weighted voting for main numbers
     main_numbers = weighted_vote_numbers(predictions, top_n=6)
@@ -222,14 +258,14 @@ def predict_ensemble(df, today_index, weights=None):
     return main_numbers, special
 
 
-def get_vote_details(df, today_index):
+def get_vote_details(df, today_index, previous_results=None):
     """
     Get detailed voting breakdown for analysis.
 
     Returns:
         dict: Contains predictions, vote_counts, and final_result
     """
-    predictions = collect_predictions(df, today_index)
+    predictions = collect_predictions(df, today_index, previous_results)
 
     # Number vote breakdown
     number_votes = Counter()
