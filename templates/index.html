@@ -64,7 +64,8 @@
         <div class="control-group">
             <label for="action">Action</label>
             <select id="action">
-                <option value="predict">Predict (預測)</option>
+                <option value="predict/astrology">Astrology (命理預測) ⚡</option>
+                <option value="predict">All Algorithms (全部算法)</option>
                 <option value="update">Update Data (更新資料)</option>
                 <option value="combin">Combin (預測並存檔)</option>
                 <option value="history">History (歷史資料)</option>
@@ -153,39 +154,47 @@
                                    Object.values(displayData).some(val => val && (val.numbers || val.error));
 
                 if (isPrediction) {
+                    // Check if any result has from_cache field (astrology endpoint)
+                    const hasCache = Object.values(displayData).some(val => val && val.from_cache !== undefined);
+
                     let tableHtml = `
                         <table>
                             <thead>
                                 <tr>
                                     <th>Algorithm</th>
-                                    <th>Next Period</th>
+                                    <th>Period</th>
                                     <th>Numbers</th>
                                     <th>Special</th>
+                                    ${hasCache ? '<th>Cache</th>' : ''}
                                 </tr>
                             </thead>
                             <tbody>
                     `;
-                    
+
                     for (const [algo, result] of Object.entries(displayData)) {
                         tableHtml += `<tr><td><strong>${algo}</strong></td>`;
-                        
+
                         if (result.error) {
-                            tableHtml += `<td colspan="3" class="error-text">Error: ${result.error}</td>`;
+                            tableHtml += `<td colspan="${hasCache ? 4 : 3}" class="error-text">Error: ${result.error}</td>`;
                         } else {
                             // Format numbers as badges or simple list
-                            const nums = Array.isArray(result.numbers) 
-                                ? result.numbers.map(n => `<span class="badge">${n}</span>`).join('') 
+                            const nums = Array.isArray(result.numbers)
+                                ? result.numbers.map(n => `<span class="badge">${n}</span>`).join('')
                                 : result.numbers;
-                                
+
+                            const period = result.period || result.next_period || '-';
+                            const cacheStatus = result.from_cache ? '⚡ cached' : '🔄 fresh';
+
                             tableHtml += `
-                                <td>${result.next_period || '-'}</td>
+                                <td>${period}</td>
                                 <td>${nums}</td>
                                 <td class="special-num">${result.special}</td>
+                                ${hasCache ? `<td>${cacheStatus}</td>` : ''}
                             `;
                         }
                         tableHtml += `</tr>`;
                     }
-                    
+
                     tableHtml += `</tbody></table>`;
                     resultsDiv.innerHTML += tableHtml;
                 } else {
