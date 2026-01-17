@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birth Profile Management - Lottery Predictor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        h1, h2, h3 { color: #333; margin-top: 0; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .family-section {
+            margin-bottom: 25px;
+        }
+        .family-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: #e9ecef;
+            border-radius: 8px 8px 0 0;
+        }
+        .family-header h3 {
+            margin: 0;
+        }
+        .family-members {
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .member-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .member-row:last-child {
+            border-bottom: none;
+        }
+        .member-info {
+            flex: 1;
+        }
+        .member-name {
+            font-weight: 600;
+            color: #333;
+        }
+        .member-details {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 3px;
+        }
+        .member-zodiac {
+            display: inline-block;
+            background: #f8f9fa;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+        .alert-info { background: #cce5ff; color: #004085; }
+
+        .hidden { display: none; }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .prediction-results {
+            margin-top: 20px;
+        }
+        .prediction-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+        .prediction-card h4 {
+            margin: 0 0 15px 0;
+            font-size: 1.2em;
+        }
+        .prediction-numbers {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .number-ball {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: white;
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .number-ball.special {
+            background: #ffc107;
+            color: #333;
+        }
+        .number-separator {
+            display: flex;
+            align-items: center;
+            font-size: 1.5em;
+            margin: 0 5px;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            color: #666;
+        }
+        .tab:hover {
+            color: #333;
+        }
+        .tab.active {
+            border-bottom-color: #007bff;
+            color: #007bff;
+            font-weight: 600;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .loading::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">← Back to Predictions</a>
+    </div>
+
+    <h1>Birth Profile Management</h1>
+    <p>Manage birth profiles for astrology-based lottery predictions</p>
+
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('profiles')">Profiles</div>
+        <div class="tab" onclick="showTab('add')">Add New Profile</div>
+        <div class="tab" onclick="showTab('predict')">Run Prediction</div>
+    </div>
+
+    <div id="alert" class="alert hidden"></div>
+
+    <!-- Profiles Tab -->
+    <div id="tab-profiles" class="tab-content active">
+        <div id="profiles-container" class="card">
+            <div class="loading">Loading profiles</div>
+        </div>
+    </div>
+
+    <!-- Add Profile Tab -->
+    <div id="tab-add" class="tab-content">
+        <div class="card">
+            <h2>Add New Birth Profile</h2>
+            <form id="add-profile-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Name (姓名) *</label>
+                        <input type="text" id="name" required placeholder="e.g., 王小明">
+                    </div>
+                    <div class="form-group">
+                        <label for="family_group">Family Group (家庭)</label>
+                        <input type="text" id="family_group" placeholder="e.g., 王家" list="family-list">
+                        <datalist id="family-list"></datalist>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="relationship">Relationship (關係)</label>
+                        <select id="relationship">
+                            <option value="">-- Select --</option>
+                            <option value="本人">本人 (Self)</option>
+                            <option value="父親">父親 (Father)</option>
+                            <option value="母親">母親 (Mother)</option>
+                            <option value="配偶">配偶 (Spouse)</option>
+                            <option value="長子">長子 (First Son)</option>
+                            <option value="長女">長女 (First Daughter)</option>
+                            <option value="次子">次子 (Second Son)</option>
+                            <option value="次女">次女 (Second Daughter)</option>
+                            <option value="兄弟">兄弟 (Brother)</option>
+                            <option value="姐妹">姐妹 (Sister)</option>
+                            <option value="其他">其他 (Other)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 20px;">Birth Date & Time (出生日期時間)</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="birth_year">Year (年) *</label>
+                        <input type="number" id="birth_year" required min="1900" max="2025" placeholder="e.g., 1990">
+                    </div>
+                    <div class="form-group">
+                        <label for="birth_month">Month (月) *</label>
+                        <select id="birth_month" required>
+                            <option value="">-- Select --</option>
+                            <option value="1">1 - January</option>
+                            <option value="2">2 - February</option>
+                            <option value="3">3 - March</option>
+                            <option value="4">4 - April</option>
+                            <option value="5">5 - May</option>
+                            <option value="6">6 - June</option>
+                            <option value="7">7 - July</option>
+                            <option value="8">8 - August</option>
+                            <option value="9">9 - September</option>
+                            <option value="10">10 - October</option>
+                            <option value="11">11 - November</option>
+                            <option value="12">12 - December</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="birth_day">Day (日) *</label>
+                        <input type="number" id="birth_day" required min="1" max="31" placeholder="e.g., 15">
+                    </div>
+                    <div class="form-group">
+                        <label for="birth_hour">Hour (時) *</label>
+                        <select id="birth_hour" required>
+                            <option value="">-- Select --</option>
+                            <option value="0">00:00 - 子時初</option>
+                            <option value="1">01:00 - 丑時初</option>
+                            <option value="2">02:00 - 丑時中</option>
+                            <option value="3">03:00 - 寅時初</option>
+                            <option value="4">04:00 - 寅時中</option>
+                            <option value="5">05:00 - 卯時初</option>
+                            <option value="6">06:00 - 卯時中</option>
+                            <option value="7">07:00 - 辰時初</option>
+                            <option value="8">08:00 - 辰時中</option>
+                            <option value="9">09:00 - 巳時初</option>
+                            <option value="10">10:00 - 巳時中</option>
+                            <option value="11">11:00 - 午時初</option>
+                            <option value="12">12:00 - 午時中</option>
+                            <option value="13">13:00 - 未時初</option>
+                            <option value="14">14:00 - 未時中</option>
+                            <option value="15">15:00 - 申時初</option>
+                            <option value="16">16:00 - 申時中</option>
+                            <option value="17">17:00 - 酉時初</option>
+                            <option value="18">18:00 - 酉時中</option>
+                            <option value="19">19:00 - 戌時初</option>
+                            <option value="20">20:00 - 戌時中</option>
+                            <option value="21">21:00 - 亥時初</option>
+                            <option value="22">22:00 - 亥時中</option>
+                            <option value="23">23:00 - 子時前</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary" style="margin-top: 15px;">
+                    Add Profile
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Prediction Tab -->
+    <div id="tab-predict" class="tab-content">
+        <div class="card">
+            <h2>Astrology-Based Prediction</h2>
+            <p>Run predictions using birth profile data with Gemini AI</p>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="predict-type">Lottery Type</label>
+                    <select id="predict-type">
+                        <option value="big">Big Lottery (大樂透)</option>
+                        <option value="super">Super Lottery (威力彩)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="predict-profile">Profile (Optional)</label>
+                    <select id="predict-profile">
+                        <option value="">All Profiles (全部)</option>
+                    </select>
+                </div>
+            </div>
+
+            <button onclick="runAstrologyPrediction()" class="btn-success" id="predict-btn">
+                Run Astrology Prediction
+            </button>
+
+            <div id="prediction-results" class="prediction-results"></div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab:nth-child(${tabName === 'profiles' ? 1 : tabName === 'add' ? 2 : 3})`).classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+
+            if (tabName === 'profiles') loadProfiles();
+        }
+
+        // Show alert message
+        function showAlert(message, type = 'info') {
+            const alert = document.getElementById('alert');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alert.classList.remove('hidden');
+            setTimeout(() => alert.classList.add('hidden'), 5000);
+        }
+
+        // Load and display profiles
+        async function loadProfiles() {
+            const container = document.getElementById('profiles-container');
+            container.innerHTML = '<div class="loading">Loading profiles</div>';
+
+            try {
+                const [profilesRes, familiesRes] = await Promise.all([
+                    fetch('/profiles'),
+                    fetch('/families')
+                ]);
+
+                const profilesData = await profilesRes.json();
+                const familiesData = await familiesRes.json();
+
+                const profiles = profilesData.profiles || [];
+                const families = familiesData.families || [];
+
+                // Update family datalist
+                const datalist = document.getElementById('family-list');
+                datalist.innerHTML = families.map(f => `<option value="${f.name}">`).join('');
+
+                // Update profile select for predictions
+                const profileSelect = document.getElementById('predict-profile');
+                profileSelect.innerHTML = '<option value="">All Profiles (全部)</option>' +
+                    profiles.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+
+                if (profiles.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No Profiles Yet</h3>
+                            <p>Add your first birth profile to start using astrology-based predictions.</p>
+                            <button onclick="showTab('add')" class="btn-primary">Add Profile</button>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Group profiles by family
+                const grouped = {};
+                profiles.forEach(p => {
+                    const family = p.family_group || 'default';
+                    if (!grouped[family]) grouped[family] = [];
+                    grouped[family].push(p);
+                });
+
+                let html = '';
+                for (const [family, members] of Object.entries(grouped)) {
+                    html += `
+                        <div class="family-section">
+                            <div class="family-header">
+                                <h3>${family === 'default' ? 'Default Group' : family}</h3>
+                                <span>${members.length} member(s)</span>
+                            </div>
+                            <div class="family-members">
+                    `;
+
+                    members.forEach(m => {
+                        const zodiac = getZodiacSign(m.birth_month, m.birth_day);
+                        html += `
+                            <div class="member-row">
+                                <div class="member-info">
+                                    <div class="member-name">
+                                        ${m.name}
+                                        ${m.relationship ? `<span class="member-zodiac">${m.relationship}</span>` : ''}
+                                        <span class="member-zodiac">${zodiac}</span>
+                                    </div>
+                                    <div class="member-details">
+                                        ${m.birth_year}/${m.birth_month}/${m.birth_day} ${getChineseHour(m.birth_hour)}
+                                    </div>
+                                </div>
+                                <button onclick="deleteProfile('${m.name}')" class="btn-danger">Delete</button>
+                            </div>
+                        `;
+                    });
+
+                    html += '</div></div>';
+                }
+
+                container.innerHTML = html;
+
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-error">Failed to load profiles: ${error.message}</div>`;
+            }
+        }
+
+        // Get zodiac sign
+        function getZodiacSign(month, day) {
+            const signs = [
+                [1, 20, '摩羯座'], [2, 19, '水瓶座'], [3, 21, '雙魚座'],
+                [4, 20, '牡羊座'], [5, 21, '金牛座'], [6, 21, '雙子座'],
+                [7, 23, '巨蟹座'], [8, 23, '獅子座'], [9, 23, '處女座'],
+                [10, 23, '天秤座'], [11, 22, '天蠍座'], [12, 22, '射手座'],
+            ];
+            for (const [m, d, sign] of signs) {
+                if (month < m || (month === m && day <= d)) return sign;
+            }
+            return '摩羯座';
+        }
+
+        // Get Chinese hour name
+        function getChineseHour(hour) {
+            const periods = ['子時', '丑時', '丑時', '寅時', '寅時', '卯時',
+                           '卯時', '辰時', '辰時', '巳時', '巳時', '午時',
+                           '午時', '未時', '未時', '申時', '申時', '酉時',
+                           '酉時', '戌時', '戌時', '亥時', '亥時', '子時'];
+            return periods[hour] || '';
+        }
+
+        // Add profile form submission
+        document.getElementById('add-profile-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                name: document.getElementById('name').value,
+                birth_year: parseInt(document.getElementById('birth_year').value),
+                birth_month: parseInt(document.getElementById('birth_month').value),
+                birth_day: parseInt(document.getElementById('birth_day').value),
+                birth_hour: parseInt(document.getElementById('birth_hour').value),
+                family_group: document.getElementById('family_group').value || 'default',
+                relationship: document.getElementById('relationship').value
+            };
+
+            try {
+                const response = await fetch('/profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to add profile');
+                }
+
+                showAlert('Profile added successfully!', 'success');
+                e.target.reset();
+                showTab('profiles');
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+            }
+        });
+
+        // Delete profile
+        async function deleteProfile(name) {
+            if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+            try {
+                const response = await fetch(`/profiles/${encodeURIComponent(name)}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to delete profile');
+                }
+
+                showAlert('Profile deleted successfully!', 'success');
+                loadProfiles();
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+            }
+        }
+
+        // Run astrology prediction
+        async function runAstrologyPrediction() {
+            const btn = document.getElementById('predict-btn');
+            const resultsDiv = document.getElementById('prediction-results');
+
+            btn.disabled = true;
+            btn.textContent = 'Running prediction...';
+            resultsDiv.innerHTML = '<div class="loading">Running astrology prediction with Gemini AI</div>';
+
+            const data = {
+                type: document.getElementById('predict-type').value,
+                profile_name: document.getElementById('predict-profile').value || undefined
+            };
+
+            try {
+                const response = await fetch('/predict/astrology', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Prediction failed');
+                }
+
+                let html = '';
+
+                // Ziwei prediction
+                if (result['Astrology-Ziwei']) {
+                    const ziwei = result['Astrology-Ziwei'];
+                    if (ziwei.error) {
+                        html += `<div class="alert alert-error">Ziwei Error: ${ziwei.error}</div>`;
+                    } else {
+                        html += `
+                            <div class="prediction-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                <h4>紫微斗數 (Purple Star Astrology)</h4>
+                                <div class="prediction-numbers">
+                                    ${ziwei.numbers.map(n => `<span class="number-ball">${n}</span>`).join('')}
+                                    <span class="number-separator">+</span>
+                                    <span class="number-ball special">${ziwei.special}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                // Zodiac prediction
+                if (result['Astrology-Zodiac']) {
+                    const zodiac = result['Astrology-Zodiac'];
+                    if (zodiac.error) {
+                        html += `<div class="alert alert-error">Zodiac Error: ${zodiac.error}</div>`;
+                    } else {
+                        html += `
+                            <div class="prediction-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <h4>西洋星座 (Western Zodiac)</h4>
+                                <div class="prediction-numbers">
+                                    ${zodiac.numbers.map(n => `<span class="number-ball">${n}</span>`).join('')}
+                                    <span class="number-separator">+</span>
+                                    <span class="number-ball special">${zodiac.special}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                resultsDiv.innerHTML = html || '<div class="alert alert-info">No prediction results</div>';
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-error">${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Astrology Prediction';
+            }
+        }
+
+        // Initial load
+        loadProfiles();
+    </script>
+</body>
+</html>

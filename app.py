@@ -2,7 +2,14 @@ from flask import Flask, json, request, jsonify, render_template
 from lotterypython.logic import get_data_from_gsheet, run_predictions
 from lotterypython.update_data import main as update_lottery_data
 from lotterypython.analysis_sheet import append_analysis_results
+from predict.lotto_predict_astrology import (
+    add_profile, get_profile, get_all_profiles, delete_profile,
+    predict_ziwei, predict_zodiac, has_profiles,
+    get_profiles_by_family, get_all_family_groups,
+    get_cache_stats, clear_all_prediction_cache
+)
 import numpy as np
+import pandas as pd
 import json
 
 app = Flask(__name__)
@@ -10,6 +17,11 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/profiles-ui')
+def profiles_ui():
+    """Render the profile management UI page."""
+    return render_template('profiles.html')
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -136,7 +148,197 @@ def history():
                 
         records = df.to_dict(orient='records')
         return jsonify({"history": records})
-        
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ Birth Profile Management APIs ============
+
+@app.route('/profiles', methods=['GET'])
+def list_profiles():
+    """List all birth profiles."""
+    try:
+        profiles = get_all_profiles()
+        return jsonify({"profiles": profiles, "count": len(profiles)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/profiles', methods=['POST'])
+def create_profile():
+    """Create a new birth profile."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+
+    required = ['name', 'birth_year', 'birth_month', 'birth_day', 'birth_hour']
+    missing = [f for f in required if f not in data]
+    if missing:
+        return jsonify({"error": f"Missing required fields: {missing}"}), 400
+
+    try:
+        profile = add_profile(
+            name=data['name'],
+            birth_year=int(data['birth_year']),
+            birth_month=int(data['birth_month']),
+            birth_day=int(data['birth_day']),
+            birth_hour=int(data['birth_hour']),
+            family_group=data.get('family_group', 'default'),
+            relationship=data.get('relationship', '')
+        )
+        return jsonify({"message": "Profile created", "profile": profile}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/profiles/<name>', methods=['GET'])
+def get_profile_by_name(name):
+    """Get a specific birth profile by name."""
+    try:
+        profile = get_profile(name)
+        if not profile:
+            return jsonify({"error": f"Profile '{name}' not found"}), 404
+        return jsonify({"profile": profile})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/profiles/<name>', methods=['DELETE'])
+def delete_profile_by_name(name):
+    """Delete a birth profile by name."""
+    try:
+        deleted = delete_profile(name)
+        if not deleted:
+            return jsonify({"error": f"Profile '{name}' not found"}), 404
+        return jsonify({"message": f"Profile '{name}' deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ Family Group APIs ============
+
+@app.route('/families', methods=['GET'])
+def list_families():
+    """List all family groups with member counts."""
+    try:
+        families = get_all_family_groups()
+        return jsonify({"families": families})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/families/<family_group>/members', methods=['GET'])
+def get_family_members(family_group):
+    """Get all members in a specific family group."""
+    try:
+        members = get_profiles_by_family(family_group)
+        return jsonify({"family": family_group, "members": members, "count": len(members)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ Astrology Prediction APIs ============
+
+@app.route('/predict/astrology', methods=['POST'])
+def predict_astrology():
+    """Get astrology-based predictions (both Ziwei and Zodiac)."""
+    data = request.get_json() or {}
+    lotto_type = data.get('type', 'big')
+    profile_name = data.get('profile_name')  # Optional: specific profile
+
+    if lotto_type not in ['big', 'super']:
+        return jsonify({"error": "Invalid lotto type"}), 400
+
+    if not has_profiles():
+        return jsonify({"error": "No birth profiles found. Please add a profile first."}), 400
+
+    results = {}
+
+    # Ziwei prediction
+    try:
+        nums, special, details = predict_ziwei(lotto_type, profile_name)
+        results["Astrology-Ziwei"] = {
+            "numbers": nums,
+            "special": special,
+            "method": "紫微斗數",
+            "details": details.get("predictions", []),
+            "from_cache": details.get("from_cache", False),
+            "period": details.get("period")
+        }
+    except Exception as e:
+        results["Astrology-Ziwei"] = {"error": str(e)}
+
+    # Zodiac prediction
+    try:
+        nums, special, details = predict_zodiac(lotto_type, profile_name)
+        results["Astrology-Zodiac"] = {
+            "numbers": nums,
+            "special": special,
+            "method": "西洋星座",
+            "details": details.get("predictions", []),
+            "from_cache": details.get("from_cache", False),
+            "period": details.get("period")
+        }
+    except Exception as e:
+        results["Astrology-Zodiac"] = {"error": str(e)}
+
+    return jsonify(results)
+
+@app.route('/predict/ziwei', methods=['POST'])
+def predict_ziwei_only():
+    """Get Ziwei (紫微斗數) prediction only."""
+    data = request.get_json() or {}
+    lotto_type = data.get('type', 'big')
+    profile_name = data.get('profile_name')
+
+    if not has_profiles():
+        return jsonify({"error": "No birth profiles found"}), 400
+
+    try:
+        nums, special, details = predict_ziwei(lotto_type, profile_name)
+        return jsonify({
+            "numbers": nums,
+            "special": special,
+            "method": "紫微斗數",
+            "details": details
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/predict/zodiac', methods=['POST'])
+def predict_zodiac_only():
+    """Get Zodiac (星座) prediction only."""
+    data = request.get_json() or {}
+    lotto_type = data.get('type', 'big')
+    profile_name = data.get('profile_name')
+
+    if not has_profiles():
+        return jsonify({"error": "No birth profiles found"}), 400
+
+    try:
+        nums, special, details = predict_zodiac(lotto_type, profile_name)
+        return jsonify({
+            "numbers": nums,
+            "special": special,
+            "method": "西洋星座",
+            "details": details
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ Prediction Cache APIs ============
+
+@app.route('/cache/stats', methods=['GET'])
+def cache_stats():
+    """Get prediction cache statistics."""
+    try:
+        stats = get_cache_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear all prediction cache."""
+    try:
+        count = clear_all_prediction_cache()
+        return jsonify({"message": f"Cleared {count} cached predictions"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
