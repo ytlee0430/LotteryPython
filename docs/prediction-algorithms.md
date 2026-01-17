@@ -24,6 +24,8 @@ LotteryPython 實作了 11 種預測演算法，涵蓋統計分析、傳統機�
 | Markov Chain | 機率模型 | 號碼轉移機率 | `predict/lotto_predict_markov.py` |
 | Pattern Analysis | 統計分析 | 組合模式分析 | `predict/lotto_predict_pattern.py` |
 | Ensemble Voting | 集成方法 | 多模型加權投票 | `predict/lotto_predict_ensemble.py` |
+| Astrology-Ziwei | AI 命理 | 紫微斗數預測 | `predict/lotto_predict_astrology.py` |
+| Astrology-Zodiac | AI 命理 | 西洋星座預測 | `predict/lotto_predict_astrology.py` |
 
 ---
 
@@ -614,3 +616,161 @@ def predict(df):
 ### 優缺點
 - **優點**: 綜合多種方法優勢，減少單一模型偏差
 - **缺點**: 計算成本較高（需執行所有模型）
+
+---
+
+## Astrology-Ziwei 紫微斗數預測
+
+### 原理
+基於中國傳統命理學「紫微斗數」，根據使用者的生辰八字（國曆年月日時），透過 Gemini AI 分析命盤，推算適合的彩券號碼。
+
+### 資料儲存
+使用 SQLite 資料庫儲存多人生辰資料：
+
+```sql
+CREATE TABLE birth_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    birth_year INTEGER NOT NULL,
+    birth_month INTEGER NOT NULL,
+    birth_day INTEGER NOT NULL,
+    birth_hour INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Gemini CLI 整合
+```python
+import subprocess
+import json
+
+def call_gemini_ziwei(profile, lottery_type='big'):
+    max_num = 49 if lottery_type == 'big' else 38
+
+    prompt = f'''
+    你是一位紫微斗數大師。請根據以下生辰資料分析命盤，
+    並推薦最適合購買彩券的號碼。
+
+    姓名: {profile['name']}
+    出生年: {profile['birth_year']}
+    出生月: {profile['birth_month']}
+    出生日: {profile['birth_day']}
+    出生時: {profile['birth_hour']}時
+
+    請推薦 6 個主要號碼 (1-{max_num}) 和 1 個特別號 (1-{max_num})。
+
+    請只回傳 JSON 格式，不要有其他文字:
+    {{"numbers": [1,2,3,4,5,6], "special": 7, "analysis": "簡短命理分析"}}
+    '''
+
+    result = subprocess.run(
+        ['gemini', prompt],
+        capture_output=True,
+        text=True,
+        timeout=60
+    )
+    return json.loads(result.stdout)
+```
+
+### 優缺點
+- **優點**: 結合傳統命理與現代 AI，提供個人化預測
+- **缺點**: 依賴外部 Gemini CLI，回應時間較長
+
+---
+
+## Astrology-Zodiac 西洋星座預測
+
+### 原理
+根據使用者的出生日期判斷西洋星座，透過 Gemini AI 分析星座運勢與幸運數字，推算適合的彩券號碼。
+
+### 星座判斷
+```python
+def get_zodiac_sign(month, day):
+    zodiac_dates = [
+        (1, 20, "摩羯座"), (2, 19, "水瓶座"), (3, 21, "雙魚座"),
+        (4, 20, "牡羊座"), (5, 21, "金牛座"), (6, 21, "雙子座"),
+        (7, 23, "巨蟹座"), (8, 23, "獅子座"), (9, 23, "處女座"),
+        (10, 23, "天秤座"), (11, 22, "天蠍座"), (12, 22, "射手座"),
+        (12, 31, "摩羯座")
+    ]
+    for end_month, end_day, sign in zodiac_dates:
+        if month < end_month or (month == end_month and day <= end_day):
+            return sign
+    return "摩羯座"
+```
+
+### Gemini CLI 整合
+```python
+def call_gemini_zodiac(profile, lottery_type='big'):
+    max_num = 49 if lottery_type == 'big' else 38
+    zodiac = get_zodiac_sign(profile['birth_month'], profile['birth_day'])
+
+    prompt = f'''
+    你是一位西洋占星術專家。請根據以下星座資料分析運勢，
+    並推薦最適合購買彩券的號碼。
+
+    姓名: {profile['name']}
+    星座: {zodiac}
+    出生日期: {profile['birth_year']}/{profile['birth_month']}/{profile['birth_day']}
+
+    請推薦 6 個主要號碼 (1-{max_num}) 和 1 個特別號 (1-{max_num})。
+
+    請只回傳 JSON 格式，不要有其他文字:
+    {{"numbers": [1,2,3,4,5,6], "special": 7, "zodiac": "{zodiac}", "lucky_elements": "幸運元素"}}
+    '''
+
+    result = subprocess.run(
+        ['gemini', prompt],
+        capture_output=True,
+        text=True,
+        timeout=60
+    )
+    return json.loads(result.stdout)
+```
+
+### 優缺點
+- **優點**: 簡單直觀，根據星座提供個人化預測
+- **缺點**: 星座判斷較為通用，個人化程度低於紫微斗數
+
+---
+
+## 命理預測 Ensemble 整合
+
+### 整合方式
+命理預測結果可加入 Ensemble 加權投票系統：
+
+```python
+DEFAULT_WEIGHTS = {
+    # ... 其他演算法權重 ...
+    "Astrology-Ziwei": 0.8,   # 紫微斗數
+    "Astrology-Zodiac": 0.7,  # 西洋星座
+}
+```
+
+### 多人預測合併
+當有多人的生辰資料時，系統會：
+1. 為每個人分別計算紫微/星座預測
+2. 合併所有人的推薦號碼
+3. 以出現頻率決定最終推薦
+
+```python
+def merge_astrology_predictions(profiles, lottery_type='big'):
+    all_numbers = []
+    all_specials = []
+
+    for profile in profiles:
+        ziwei = call_gemini_ziwei(profile, lottery_type)
+        zodiac = call_gemini_zodiac(profile, lottery_type)
+
+        all_numbers.extend(ziwei['numbers'])
+        all_numbers.extend(zodiac['numbers'])
+        all_specials.extend([ziwei['special'], zodiac['special']])
+
+    # 頻率投票
+    from collections import Counter
+    top_6 = [n for n, _ in Counter(all_numbers).most_common(6)]
+    special = Counter(all_specials).most_common(1)[0][0]
+
+    return top_6, special
+```

@@ -30,6 +30,8 @@ DEFAULT_WEIGHTS = {
     "LSTM-RF": 1.2,
     "Markov": 1.0,            # Transition probability based
     "Pattern": 0.9,           # Pattern matching
+    "Astrology-Ziwei": 0.8,   # 紫微斗數 prediction
+    "Astrology-Zodiac": 0.7,  # 西洋星座 prediction
 }
 
 

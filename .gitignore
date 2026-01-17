@@ -138,3 +138,7 @@ get-pip.py
 .windsurf/
 _bmad/
 .kilocodemodes
+
+# SQLite databases
+*.db
+predict/astrology/birth_data.db

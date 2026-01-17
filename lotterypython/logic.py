@@ -13,6 +13,7 @@ from predict.lotto_predict_LSTMRF import predict_lstm_rf
 from predict.lotto_predict_markov import predict_markov
 from predict.lotto_predict_pattern import predict_pattern
 from predict.lotto_predict_ensemble import predict_ensemble
+from predict.lotto_predict_astrology import predict_ziwei, predict_zodiac, has_profiles
 from predict import lotto_predict_radom
 
 def get_data_from_gsheet(lotto_type: str) -> pd.DataFrame:
@@ -150,6 +151,36 @@ def run_predictions(df: pd.DataFrame) -> dict:
         }
     except Exception as e:
         results["Pattern"] = {"error": str(e)}
+
+    # Astrology predictions (only if profiles exist)
+    # Determine lottery type based on max number in data
+    max_num = int(df[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].max().max())
+    lottery_type = 'big' if max_num > 38 else 'super'
+
+    if has_profiles():
+        # Astrology-Ziwei (紫微斗數)
+        try:
+            nums_ziwei, sp_ziwei, details_ziwei = predict_ziwei(lottery_type)
+            results["Astrology-Ziwei"] = {
+                "next_period": next_period,
+                "numbers": sorted(nums_ziwei),
+                "special": int(sp_ziwei),
+                "details": details_ziwei.get("predictions", [])
+            }
+        except Exception as e:
+            results["Astrology-Ziwei"] = {"error": str(e)}
+
+        # Astrology-Zodiac (西洋星座)
+        try:
+            nums_zodiac, sp_zodiac, details_zodiac = predict_zodiac(lottery_type)
+            results["Astrology-Zodiac"] = {
+                "next_period": next_period,
+                "numbers": sorted(nums_zodiac),
+                "special": int(sp_zodiac),
+                "details": details_zodiac.get("predictions", [])
+            }
+        except Exception as e:
+            results["Astrology-Zodiac"] = {"error": str(e)}
 
     # Ensemble Voting
     try:

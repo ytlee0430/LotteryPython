@@ -39,6 +39,13 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 - **XGBoost**: 極端梯度提升，優化版 GradientBoosting
 - **Markov Chain**: 馬可夫鏈，分析號碼轉移機率
 - **Pattern Analysis**: 組合模式分析（奇偶比、高低比、區間分布）
+- **Astrology-Ziwei**: 紫微斗數預測（基於生辰八字，使用 Gemini AI）
+- **Astrology-Zodiac**: 西洋星座預測（基於生日，使用 Gemini AI）
+
+### 6. 生辰八字管理
+- **多人資料儲存**: SQLite 資料庫支援多人生辰資料
+- **資料欄位**: 姓名、國曆出生年月日時
+- **Gemini AI 整合**: 透過 Gemini CLI 計算命理推薦號碼
 
 ### 4. 使用介面
 - **Web UI**: Flask 網頁應用程式
