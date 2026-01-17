@@ -236,6 +236,126 @@ def normalize_period(raw_period: str) -> str:
 
 ---
 
+## SQLite 資料庫結構
+
+### 資料庫位置
+```
+predict/astrology/birth_data.db
+```
+
+### 資料表一覽
+
+| 資料表名稱 | 用途 |
+|-----------|------|
+| `profiles` | 生辰資料儲存 |
+| `prediction_cache` | 命理預測快取 |
+| `all_predictions_cache` | 所有演算法預測快取 |
+
+---
+
+### profiles 資料表
+
+儲存使用者生辰八字資料，支援家庭分組。
+
+```sql
+CREATE TABLE profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    birth_year INTEGER NOT NULL,
+    birth_month INTEGER NOT NULL,
+    birth_day INTEGER NOT NULL,
+    birth_hour INTEGER NOT NULL,
+    family_group TEXT DEFAULT 'default',
+    relationship TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+```
+
+| 欄位 | 類型 | 約束 | 說明 |
+|------|------|------|------|
+| id | INTEGER | PK, AUTO | 流水編號 |
+| name | TEXT | UNIQUE, NOT NULL | 姓名（唯一識別）|
+| birth_year | INTEGER | NOT NULL | 國曆出生年 |
+| birth_month | INTEGER | NOT NULL | 出生月 (1-12) |
+| birth_day | INTEGER | NOT NULL | 出生日 (1-31) |
+| birth_hour | INTEGER | NOT NULL | 出生時 (0-23) |
+| family_group | TEXT | DEFAULT 'default' | 家庭群組名稱 |
+| relationship | TEXT | 可為空 | 家庭關係（父親、母親等）|
+| created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
+
+---
+
+### prediction_cache 資料表
+
+儲存命理預測（紫微斗數、西洋星座）快取結果。
+
+```sql
+CREATE TABLE prediction_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lottery_type TEXT NOT NULL,
+    period TEXT NOT NULL,
+    method TEXT NOT NULL,
+    profile_ids TEXT NOT NULL,
+    numbers TEXT NOT NULL,
+    special INTEGER NOT NULL,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(lottery_type, period, method, profile_ids)
+)
+```
+
+| 欄位 | 類型 | 約束 | 說明 |
+|------|------|------|------|
+| id | INTEGER | PK, AUTO | 流水編號 |
+| lottery_type | TEXT | NOT NULL | 彩種類型 (`big`/`super`) |
+| period | TEXT | NOT NULL | 預測期別 |
+| method | TEXT | NOT NULL | 預測方法 (`ziwei`/`zodiac`) |
+| profile_ids | TEXT | NOT NULL | 使用的 profile ID 列表（JSON）|
+| numbers | TEXT | NOT NULL | 預測號碼（JSON 陣列）|
+| special | INTEGER | NOT NULL | 預測特別號 |
+| details | TEXT | 可為空 | 詳細資訊（JSON）|
+| created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
+
+**唯一索引**: `(lottery_type, period, method, profile_ids)`
+
+---
+
+### all_predictions_cache 資料表
+
+儲存所有演算法預測結果的快取。
+
+```sql
+CREATE TABLE all_predictions_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lottery_type TEXT NOT NULL,
+    period TEXT NOT NULL,
+    results TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(lottery_type, period)
+)
+```
+
+| 欄位 | 類型 | 約束 | 說明 |
+|------|------|------|------|
+| id | INTEGER | PK, AUTO | 流水編號 |
+| lottery_type | TEXT | NOT NULL | 彩種類型 (`big`/`super`) |
+| period | TEXT | NOT NULL | 預測期別 |
+| results | TEXT | NOT NULL | 所有預測結果（JSON）|
+| created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
+
+**唯一索引**: `(lottery_type, period)`
+
+---
+
+### 快取效能
+
+| 情境 | 首次執行 | 快取讀取 | 加速比 |
+|------|----------|----------|--------|
+| 命理預測 (Astrology) | ~10-15 秒 | < 0.1 秒 | 100x+ |
+| 所有演算法 (All) | ~60-90 秒 | ~1-2 秒 | 50x+ |
+
+---
+
 ## 資料驗證
 
 ### 驗證函數範例

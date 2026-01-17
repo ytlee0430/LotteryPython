@@ -44,8 +44,19 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 
 ### 6. 生辰八字管理
 - **多人資料儲存**: SQLite 資料庫支援多人生辰資料
-- **資料欄位**: 姓名、國曆出生年月日時
+- **家庭分組**: 可依家庭分組管理成員（如「王家」、「李家」）
+- **關係標註**: 支援家庭關係（父親、母親、長子、配偶等）
+- **資料欄位**: 姓名、國曆出生年月日時、家庭群組、關係
 - **Gemini AI 整合**: 透過 Gemini CLI 計算命理推薦號碼
+- **Profile 管理 UI**: `/profiles-ui` 網頁介面管理生辰資料
+
+### 7. 預測快取系統
+- **SQLite 快取**: 所有預測結果存入 SQLite 資料庫
+- **快取鍵值**: `lottery_type + period` 組合作為唯一識別
+- **命理快取**: 依 `lottery_type + period + method + profile_ids` 快取
+- **效能提升**: 首次預測 ~64 秒，快取後 ~1 秒
+- **快取管理 API**: `/cache/stats` 查看統計、`/cache/clear` 清除快取
+- **自動失效**: 刪除 profile 時自動清除相關快取
 
 ### 4. 使用介面
 - **Web UI**: Flask 網頁應用程式
@@ -82,6 +93,8 @@ LotteryPython/
 ├── lotterypython/          # 核心 Python 套件
 ├── predict/                # 預測演算法模組
 ├── templates/              # Web UI 模板
+│   ├── index.html          # 主頁面（預測介面）
+│   └── profiles.html       # Profile 管理頁面
 ├── scripts/                # 自動化腳本
 ├── tests/                  # 測試套件
 ├── app.py                  # Flask 應用程式
@@ -112,6 +125,6 @@ LotteryPython/
 
 ## 版本資訊
 
-- **當前版本**: 1.0.0
+- **當前版本**: 1.1.0
 - **Python 版本**: 3.9+
-- **最後更新**: 2026-01-15
+- **最後更新**: 2026-01-17

@@ -249,6 +249,162 @@ fetch('/predict', {
 });
 ```
 
+---
+
+## Profile 管理端點
+
+### GET /profiles
+
+**說明**: 取得所有生辰 profile
+
+**成功回應** (200):
+```json
+{
+  "profiles": [
+    {
+      "id": 1,
+      "name": "王小明",
+      "birth_year": 1990,
+      "birth_month": 5,
+      "birth_day": 15,
+      "birth_hour": 14,
+      "family_group": "王家",
+      "relationship": "長子"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### POST /profiles
+
+**說明**: 新增生辰 profile
+
+**請求格式**:
+```json
+{
+  "name": "王小明",
+  "birth_year": 1990,
+  "birth_month": 5,
+  "birth_day": 15,
+  "birth_hour": 14,
+  "family_group": "王家",
+  "relationship": "長子"
+}
+```
+
+**參數**:
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| name | string | 是 | 姓名（唯一識別）|
+| birth_year | int | 是 | 出生年（國曆）|
+| birth_month | int | 是 | 出生月 (1-12) |
+| birth_day | int | 是 | 出生日 (1-31) |
+| birth_hour | int | 是 | 出生時 (0-23) |
+| family_group | string | 否 | 家庭群組（預設 'default'）|
+| relationship | string | 否 | 家庭關係 |
+
+---
+
+### DELETE /profiles/{name}
+
+**說明**: 刪除指定 profile（同時清除相關快取）
+
+---
+
+### GET /families
+
+**說明**: 取得所有家庭群組
+
+**成功回應** (200):
+```json
+{
+  "families": [
+    { "name": "王家", "member_count": 3 },
+    { "name": "default", "member_count": 1 }
+  ]
+}
+```
+
+---
+
+## 命理預測端點
+
+### POST /predict/astrology
+
+**說明**: 執行命理預測（紫微斗數 + 西洋星座）
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super",
+  "profile_name": "王小明"  // 選填，不填則使用全部 profiles
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "Astrology-Ziwei": {
+    "numbers": [4, 9, 12, 15, 23, 41],
+    "special": 9,
+    "method": "紫微斗數",
+    "from_cache": true,
+    "period": 115005
+  },
+  "Astrology-Zodiac": {
+    "numbers": [4, 6, 10, 19, 23, 27],
+    "special": 29,
+    "method": "西洋星座",
+    "from_cache": true,
+    "period": 115005
+  }
+}
+```
+
+---
+
+## 快取管理端點
+
+### GET /cache/stats
+
+**說明**: 取得快取統計資訊
+
+**成功回應** (200):
+```json
+{
+  "astrology_cache": {
+    "total_cached": 4,
+    "breakdown": [
+      { "lottery_type": "big", "method": "ziwei", "count": 1 }
+    ]
+  },
+  "all_predictions_cache": {
+    "total_cached": 1,
+    "entries": [
+      { "lottery_type": "big", "period": "115005", "created_at": "..." }
+    ]
+  }
+}
+```
+
+---
+
+### POST /cache/clear
+
+**說明**: 清除所有預測快取
+
+**成功回應** (200):
+```json
+{
+  "message": "Cleared 4 astrology + 1 all-predictions cached entries"
+}
+```
+
+---
+
 ## 回應欄位說明
 
 ### 預測結果物件
@@ -258,6 +414,7 @@ fetch('/predict', {
 | next_period | string | 下一期期別 |
 | numbers | array[int] | 6 個預測號碼（已排序）|
 | special | int | 特別號預測 |
+| from_cache | boolean | 是否來自快取 |
 
 ### 歷史記錄物件
 
