@@ -8,6 +8,7 @@ from predict.lotto_predict_astrology import (
     get_profiles_by_family, get_all_family_groups,
     get_cache_stats, clear_all_prediction_cache
 )
+from predict.astrology.profiles import AllPredictionsCacheManager
 import numpy as np
 import pandas as pd
 import json
@@ -328,8 +329,13 @@ def predict_zodiac_only():
 def cache_stats():
     """Get prediction cache statistics."""
     try:
-        stats = get_cache_stats()
-        return jsonify(stats)
+        astrology_stats = get_cache_stats()
+        all_cache = AllPredictionsCacheManager()
+        all_stats = all_cache.get_cache_stats()
+        return jsonify({
+            "astrology_cache": astrology_stats,
+            "all_predictions_cache": all_stats
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -337,8 +343,12 @@ def cache_stats():
 def clear_cache():
     """Clear all prediction cache."""
     try:
-        count = clear_all_prediction_cache()
-        return jsonify({"message": f"Cleared {count} cached predictions"})
+        astrology_count = clear_all_prediction_cache()
+        all_cache = AllPredictionsCacheManager()
+        all_count = all_cache.clear_all_cache()
+        return jsonify({
+            "message": f"Cleared {astrology_count} astrology + {all_count} all-predictions cached entries"
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

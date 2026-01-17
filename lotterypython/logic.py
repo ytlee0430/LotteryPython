@@ -15,6 +15,17 @@ from predict.lotto_predict_pattern import predict_pattern
 from predict.lotto_predict_ensemble import predict_ensemble
 from predict.lotto_predict_astrology import predict_ziwei, predict_zodiac, has_profiles
 from predict import lotto_predict_radom
+from predict.astrology.profiles import AllPredictionsCacheManager
+
+# Singleton cache manager
+_all_cache_manager = None
+
+def get_all_cache_manager():
+    """Get or create the all predictions cache manager singleton."""
+    global _all_cache_manager
+    if _all_cache_manager is None:
+        _all_cache_manager = AllPredictionsCacheManager()
+    return _all_cache_manager
 
 def get_data_from_gsheet(lotto_type: str) -> pd.DataFrame:
     """Fetch lottery data from Google Sheets."""
@@ -40,8 +51,16 @@ def get_data_from_gsheet(lotto_type: str) -> pd.DataFrame:
     
     return df
 
-def run_predictions(df: pd.DataFrame) -> dict:
-    """Run all prediction algorithms on the dataframe."""
+def run_predictions(df: pd.DataFrame, use_cache: bool = True) -> dict:
+    """Run all prediction algorithms on the dataframe.
+
+    Args:
+        df: DataFrame with lottery history
+        use_cache: Whether to use cached results if available
+
+    Returns:
+        dict with all algorithm predictions
+    """
     if df.empty:
         return {}
 
@@ -59,6 +78,21 @@ def run_predictions(df: pd.DataFrame) -> dict:
         next_period = f"{max(int(p) for p in numeric_periods) + 1:0{max_len}d}"
     else:
         next_period = ""
+
+    # Determine lottery type
+    max_num = int(df[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].max().max())
+    lottery_type = 'big' if max_num > 38 else 'super'
+
+    # Check cache first
+    if use_cache and next_period:
+        cache_manager = get_all_cache_manager()
+        cached = cache_manager.get_cached_predictions(lottery_type, next_period)
+        if cached:
+            # Add from_cache flag to each result
+            for key in cached:
+                if isinstance(cached[key], dict) and 'error' not in cached[key]:
+                    cached[key]['from_cache'] = True
+            return cached
 
     results = {}
     
@@ -153,10 +187,6 @@ def run_predictions(df: pd.DataFrame) -> dict:
         results["Pattern"] = {"error": str(e)}
 
     # Astrology predictions (only if profiles exist)
-    # Determine lottery type based on max number in data
-    max_num = int(df[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].max().max())
-    lottery_type = 'big' if max_num > 38 else 'super'
-
     if has_profiles():
         # Astrology-Ziwei (紫微斗數)
         try:
@@ -192,5 +222,15 @@ def run_predictions(df: pd.DataFrame) -> dict:
         }
     except Exception as e:
         results["Ensemble"] = {"error": str(e)}
+
+    # Add from_cache=False to all fresh results
+    for key in results:
+        if isinstance(results[key], dict) and 'error' not in results[key]:
+            results[key]['from_cache'] = False
+
+    # Save to cache
+    if use_cache and next_period:
+        cache_manager = get_all_cache_manager()
+        cache_manager.save_predictions(lottery_type, next_period, results)
 
     return results

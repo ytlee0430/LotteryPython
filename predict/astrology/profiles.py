@@ -62,6 +62,17 @@ class BirthProfileManager:
                     UNIQUE(lottery_type, period, method, profile_ids)
                 )
             ''')
+            # Create all_predictions_cache table for caching all algorithm results
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS all_predictions_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lottery_type TEXT NOT NULL,
+                    period TEXT NOT NULL,
+                    results TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(lottery_type, period)
+                )
+            ''')
             # Add family_group column if not exists (for existing databases)
             try:
                 conn.execute('ALTER TABLE birth_profiles ADD COLUMN family_group TEXT DEFAULT "default"')
@@ -396,6 +407,80 @@ class PredictionCacheManager:
                         for r in cursor.fetchall()]
 
             return {"total_cached": total, "breakdown": breakdown}
+
+
+class AllPredictionsCacheManager:
+    """Manages cache for all algorithm predictions."""
+
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or DB_PATH
+        # Ensure tables exist
+        BirthProfileManager(self.db_path)
+
+    def get_cached_predictions(self, lottery_type: str, period: str) -> Optional[dict]:
+        """
+        Get cached predictions for all algorithms.
+
+        Args:
+            lottery_type: 'big' or 'super'
+            period: Lottery period number (as string)
+
+        Returns:
+            dict with all algorithm results or None if not cached
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute('''
+                SELECT results FROM all_predictions_cache
+                WHERE lottery_type = ? AND period = ?
+            ''', (lottery_type, period))
+            row = cursor.fetchone()
+
+            if row:
+                return json.loads(row['results'])
+            return None
+
+    def save_predictions(self, lottery_type: str, period: str, results: dict) -> None:
+        """
+        Save all algorithm predictions to cache.
+
+        Args:
+            lottery_type: 'big' or 'super'
+            period: Lottery period number (as string)
+            results: All algorithm results dict
+        """
+        results_json = json.dumps(results, ensure_ascii=False)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO all_predictions_cache
+                (lottery_type, period, results)
+                VALUES (?, ?, ?)
+            ''', (lottery_type, period, results_json))
+            conn.commit()
+
+    def clear_all_cache(self) -> int:
+        """Clear all cached predictions."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute('DELETE FROM all_predictions_cache')
+            conn.commit()
+            return cursor.rowcount
+
+    def get_cache_stats(self) -> dict:
+        """Get cache statistics."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute('SELECT COUNT(*) FROM all_predictions_cache')
+            total = cursor.fetchone()[0]
+
+            cursor = conn.execute('''
+                SELECT lottery_type, period, created_at
+                FROM all_predictions_cache
+                ORDER BY created_at DESC
+            ''')
+            entries = [{"lottery_type": r[0], "period": r[1], "created_at": r[2]}
+                      for r in cursor.fetchall()]
+
+            return {"total_cached": total, "entries": entries}
 
 
 if __name__ == "__main__":
