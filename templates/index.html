@@ -44,10 +44,14 @@
     </style>
 </head>
 <body>
-    <div class="nav" style="margin-bottom: 20px;">
+    <div class="nav" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
         <a href="/profiles-ui" style="color: #007bff; text-decoration: none; font-weight: 500;">
             Manage Birth Profiles (生辰八字管理) →
         </a>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span style="color: #666;">{{ current_user.username }}</span>
+            <a href="/logout" style="color: #dc3545; text-decoration: none; font-weight: 500;">登出</a>
+        </div>
     </div>
 
     <h1>Lottery Predictor</h1>

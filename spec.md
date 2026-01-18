@@ -52,11 +52,21 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 
 ### 7. 預測快取系統
 - **SQLite 快取**: 所有預測結果存入 SQLite 資料庫
-- **快取鍵值**: `lottery_type + period` 組合作為唯一識別
-- **命理快取**: 依 `lottery_type + period + method + profile_ids` 快取
+- **快取鍵值**: `user_id + lottery_type + period` 組合作為唯一識別
+- **命理快取**: 依 `user_id + lottery_type + period + method + profile_ids` 快取
 - **效能提升**: 首次預測 ~64 秒，快取後 ~1 秒
 - **快取管理 API**: `/cache/stats` 查看統計、`/cache/clear` 清除快取
 - **自動失效**: 刪除 profile 時自動清除相關快取
+- **只保留最新期**: 每用戶每彩種只保留最新一期快取
+
+### 8. 會員系統
+- **用戶註冊**: 開放註冊，帳號唯一
+- **密碼加密**: 使用 werkzeug.security 加密儲存
+- **Session 認證**: Flask-Login + Cookie 管理登入狀態
+- **資料隔離**: 每位會員只能存取自己的家人資料
+- **登入頁面**: `/login` 登入、`/register` 註冊、`/logout` 登出
+- **受保護路由**: 所有預測和 profile 管理 API 需登入
+- **用戶表**: SQLite `users` 表儲存帳號資訊
 
 ### 4. 使用介面
 - **Web UI**: Flask 網頁應用程式
@@ -94,6 +104,7 @@ LotteryPython/
 ├── predict/                # 預測演算法模組
 ├── templates/              # Web UI 模板
 │   ├── index.html          # 主頁面（預測介面）
+│   ├── login.html          # 登入/註冊頁面
 │   └── profiles.html       # Profile 管理頁面
 ├── scripts/                # 自動化腳本
 ├── tests/                  # 測試套件
@@ -110,7 +121,8 @@ LotteryPython/
 | 資料處理 | Pandas, NumPy |
 | 機器學習 | scikit-learn, TensorFlow/Keras |
 | 雲端儲存 | gspread, oauth2client |
-| Web 框架 | Flask, Gunicorn |
+| Web 框架 | Flask, Flask-Login, Gunicorn |
+| 認證 | werkzeug.security (密碼加密) |
 | 容器化 | Docker, Nginx |
 
 ## 相關文檔
@@ -125,6 +137,6 @@ LotteryPython/
 
 ## 版本資訊
 
-- **當前版本**: 1.1.0
+- **當前版本**: 1.2.0
 - **Python 版本**: 3.9+
-- **最後更新**: 2026-01-17
+- **最後更新**: 2026-01-18

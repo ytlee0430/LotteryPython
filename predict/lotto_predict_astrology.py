@@ -84,7 +84,7 @@ def get_next_period(lottery_type: str = 'big') -> int:
 
 
 def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
-                  period: Optional[int] = None) -> Tuple[List[int], int, Dict]:
+                  period: Optional[int] = None, user_id: int = None) -> Tuple[List[int], int, Dict]:
     """
     Predict lottery numbers using 紫微斗數 (Purple Star Astrology).
 
@@ -92,6 +92,7 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
         lottery_type: 'big' for 大樂透 or 'super' for 威力彩
         profile_name: Specific profile to use (uses all if None)
         period: Lottery period number (auto-detected if None)
+        user_id: Owner user's ID for filtering profiles
 
     Returns:
         tuple: (numbers, special, details)
@@ -102,12 +103,12 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
 
     # Get profiles
     if profile_name:
-        profile = manager.get_profile(profile_name)
+        profile = manager.get_profile(profile_name, user_id)
         if not profile:
             raise ValueError(f"Profile '{profile_name}' not found")
         profiles = [profile]
     else:
-        profiles = manager.get_all_profiles()
+        profiles = manager.get_all_profiles(user_id)
 
     if not profiles:
         raise ValueError("No birth profiles found. Please add at least one profile.")
@@ -120,7 +121,7 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
     profile_ids = [p['id'] for p in profiles]
 
     # Check cache first
-    cached = cache.get_cached_prediction(lottery_type, period, 'ziwei', profile_ids)
+    cached = cache.get_cached_prediction(lottery_type, period, 'ziwei', profile_ids, user_id)
     if cached:
         cached['details']['from_cache'] = True
         cached['details']['period'] = period
@@ -172,13 +173,13 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
 
     # Save to cache
     cache.save_prediction(lottery_type, period, 'ziwei', profile_ids,
-                         final_numbers, special, details)
+                         final_numbers, special, details, user_id)
 
     return final_numbers, special, details
 
 
 def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None,
-                   period: Optional[int] = None) -> Tuple[List[int], int, Dict]:
+                   period: Optional[int] = None, user_id: int = None) -> Tuple[List[int], int, Dict]:
     """
     Predict lottery numbers using Western Zodiac astrology.
 
@@ -186,6 +187,7 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
         lottery_type: 'big' for 大樂透 or 'super' for 威力彩
         profile_name: Specific profile to use (uses all if None)
         period: Lottery period number (auto-detected if None)
+        user_id: Owner user's ID for filtering profiles
 
     Returns:
         tuple: (numbers, special, details)
@@ -196,12 +198,12 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
 
     # Get profiles
     if profile_name:
-        profile = manager.get_profile(profile_name)
+        profile = manager.get_profile(profile_name, user_id)
         if not profile:
             raise ValueError(f"Profile '{profile_name}' not found")
         profiles = [profile]
     else:
-        profiles = manager.get_all_profiles()
+        profiles = manager.get_all_profiles(user_id)
 
     if not profiles:
         raise ValueError("No birth profiles found. Please add at least one profile.")
@@ -214,7 +216,7 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
     profile_ids = [p['id'] for p in profiles]
 
     # Check cache first
-    cached = cache.get_cached_prediction(lottery_type, period, 'zodiac', profile_ids)
+    cached = cache.get_cached_prediction(lottery_type, period, 'zodiac', profile_ids, user_id)
     if cached:
         cached['details']['from_cache'] = True
         cached['details']['period'] = period
@@ -267,7 +269,7 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
 
     # Save to cache
     cache.save_prediction(lottery_type, period, 'zodiac', profile_ids,
-                         final_numbers, special, details)
+                         final_numbers, special, details, user_id)
 
     return final_numbers, special, details
 
@@ -323,53 +325,54 @@ def predict_astrology_combined(lottery_type: str = 'big') -> Tuple[List[int], in
 # Profile management functions (exposed for API)
 def add_profile(name: str, birth_year: int, birth_month: int,
                 birth_day: int, birth_hour: int,
-                family_group: str = 'default', relationship: str = '') -> dict:
+                family_group: str = 'default', relationship: str = '',
+                user_id: int = None) -> dict:
     """Add a new birth profile."""
     return get_profile_manager().add_profile(
         name, birth_year, birth_month, birth_day, birth_hour,
-        family_group, relationship
+        family_group, relationship, user_id
     )
 
 
-def get_profile(name: str) -> Optional[dict]:
+def get_profile(name: str, user_id: int = None) -> Optional[dict]:
     """Get a profile by name."""
-    return get_profile_manager().get_profile(name)
+    return get_profile_manager().get_profile(name, user_id)
 
 
-def get_all_profiles() -> list:
+def get_all_profiles(user_id: int = None) -> list:
     """Get all profiles."""
-    return get_profile_manager().get_all_profiles()
+    return get_profile_manager().get_all_profiles(user_id)
 
 
-def get_profiles_by_family(family_group: str) -> list:
+def get_profiles_by_family(family_group: str, user_id: int = None) -> list:
     """Get all profiles in a specific family group."""
-    return get_profile_manager().get_profiles_by_family(family_group)
+    return get_profile_manager().get_profiles_by_family(family_group, user_id)
 
 
-def get_all_family_groups() -> list:
+def get_all_family_groups(user_id: int = None) -> list:
     """Get list of all family groups."""
-    return get_profile_manager().get_all_family_groups()
+    return get_profile_manager().get_all_family_groups(user_id)
 
 
-def delete_profile(name: str) -> bool:
+def delete_profile(name: str, user_id: int = None) -> bool:
     """Delete a profile."""
-    return get_profile_manager().delete_profile(name)
+    return get_profile_manager().delete_profile(name, user_id)
 
 
-def has_profiles() -> bool:
+def has_profiles(user_id: int = None) -> bool:
     """Check if any profiles exist."""
-    return len(get_profile_manager().get_all_profiles()) > 0
+    return len(get_profile_manager().get_all_profiles(user_id)) > 0
 
 
 # Cache management functions (exposed for API)
-def get_cache_stats() -> dict:
+def get_cache_stats(user_id: int = None) -> dict:
     """Get prediction cache statistics."""
-    return get_cache_manager().get_cache_stats()
+    return get_cache_manager().get_cache_stats(user_id)
 
 
-def clear_all_prediction_cache() -> int:
+def clear_all_prediction_cache(user_id: int = None) -> int:
     """Clear all prediction cache. Returns number of entries deleted."""
-    return get_cache_manager().clear_all_cache()
+    return get_cache_manager().clear_all_cache(user_id)
 
 
 if __name__ == "__main__":

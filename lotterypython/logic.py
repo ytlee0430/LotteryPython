@@ -51,12 +51,13 @@ def get_data_from_gsheet(lotto_type: str) -> pd.DataFrame:
     
     return df
 
-def run_predictions(df: pd.DataFrame, use_cache: bool = True) -> dict:
+def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = None) -> dict:
     """Run all prediction algorithms on the dataframe.
 
     Args:
         df: DataFrame with lottery history
         use_cache: Whether to use cached results if available
+        user_id: Owner user's ID for user-specific cache
 
     Returns:
         dict with all algorithm predictions
@@ -86,7 +87,7 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True) -> dict:
     # Check cache first
     if use_cache and next_period:
         cache_manager = get_all_cache_manager()
-        cached = cache_manager.get_cached_predictions(lottery_type, next_period)
+        cached = cache_manager.get_cached_predictions(lottery_type, next_period, user_id)
         if cached:
             # Add from_cache flag to each result
             for key in cached:
@@ -186,11 +187,11 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True) -> dict:
     except Exception as e:
         results["Pattern"] = {"error": str(e)}
 
-    # Astrology predictions (only if profiles exist)
-    if has_profiles():
+    # Astrology predictions (only if profiles exist for this user)
+    if has_profiles(user_id):
         # Astrology-Ziwei (紫微斗數)
         try:
-            nums_ziwei, sp_ziwei, details_ziwei = predict_ziwei(lottery_type)
+            nums_ziwei, sp_ziwei, details_ziwei = predict_ziwei(lottery_type, user_id=user_id)
             results["Astrology-Ziwei"] = {
                 "next_period": next_period,
                 "numbers": sorted(nums_ziwei),
@@ -202,7 +203,7 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True) -> dict:
 
         # Astrology-Zodiac (西洋星座)
         try:
-            nums_zodiac, sp_zodiac, details_zodiac = predict_zodiac(lottery_type)
+            nums_zodiac, sp_zodiac, details_zodiac = predict_zodiac(lottery_type, user_id=user_id)
             results["Astrology-Zodiac"] = {
                 "next_period": next_period,
                 "numbers": sorted(nums_zodiac),
@@ -231,6 +232,6 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True) -> dict:
     # Save to cache
     if use_cache and next_period:
         cache_manager = get_all_cache_manager()
-        cache_manager.save_predictions(lottery_type, next_period, results)
+        cache_manager.save_predictions(lottery_type, next_period, results, user_id)
 
     return results

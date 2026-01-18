@@ -9,17 +9,90 @@ LotteryPython 提供 RESTful API 介面，透過 Flask 框架實作。預設運�
 - **開發環境**: `http://localhost:3000`
 - **Docker 環境**: `http://localhost:80`（透過 Nginx 反向代理）
 
+## 認證
+
+本 API 使用 Session + Cookie 認證機制。大部分端點需要登入後才能存取。
+
+### 認證流程
+
+1. 使用 `/register` 註冊帳號
+2. 使用 `/login` 登入取得 session
+3. 後續請求自動帶入 session cookie
+4. 使用 `/logout` 登出
+
+---
+
+## 認證端點
+
+### GET /login
+
+**說明**: 顯示登入頁面
+
+**回應**: HTML 頁面（`templates/login.html`）
+
+---
+
+### POST /login
+
+**說明**: 用戶登入
+
+**請求格式** (form-data):
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| username | string | 是 | 帳號 |
+| password | string | 是 | 密碼 |
+
+**成功回應**: 重導向至 `/`
+
+**失敗回應**: 重導向至 `/login` 並顯示錯誤訊息
+
+---
+
+### GET /register
+
+**說明**: 顯示註冊頁面
+
+**回應**: HTML 頁面（`templates/login.html`，註冊 tab）
+
+---
+
+### POST /register
+
+**說明**: 用戶註冊
+
+**請求格式** (form-data):
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| username | string | 是 | 帳號（唯一）|
+| password | string | 是 | 密碼（至少4字元）|
+| confirm_password | string | 是 | 確認密碼 |
+| email | string | 否 | Email |
+
+**成功回應**: 重導向至 `/login` 並顯示成功訊息
+
+**失敗回應**: 重導向至 `/register` 並顯示錯誤訊息
+
+---
+
+### GET /logout
+
+**說明**: 用戶登出（需登入）
+
+**回應**: 重導向至 `/login`
+
+---
+
 ## 端點列表
 
 ### GET /
 
-**說明**: 取得主頁面 HTML
+**說明**: 取得主頁面 HTML（需登入，未登入重導向至 `/login`）
 
 **回應**: HTML 頁面（`templates/index.html`）
 
 ---
 
-### POST /predict
+### POST /predict（需登入）
 
 **說明**: 執行預測分析
 

@@ -9,3 +9,4 @@ scikit-learn
 tensorflow
 pytest
 Flask
+flask-login

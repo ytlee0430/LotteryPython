@@ -3,6 +3,7 @@ Birth Profile Manager
 
 Manages birth date/time profiles for multiple users using SQLite database.
 Supports CRUD operations for astrology-based lottery predictions.
+Includes user authentication and per-user profile isolation.
 """
 
 import sqlite3
@@ -10,10 +11,151 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 # Database path
 DB_PATH = Path(__file__).parent / "birth_data.db"
+
+
+class User:
+    """User model for Flask-Login compatibility."""
+
+    def __init__(self, id: int, username: str, email: str = None, created_at: str = None):
+        self.id = id
+        self.username = username
+        self.email = email
+        self.created_at = created_at
+        self.is_authenticated = True
+        self.is_active = True
+        self.is_anonymous = False
+
+    def get_id(self):
+        return str(self.id)
+
+    @staticmethod
+    def from_dict(data: dict) -> 'User':
+        return User(
+            id=data['id'],
+            username=data['username'],
+            email=data.get('email'),
+            created_at=data.get('created_at')
+        )
+
+
+class UserManager:
+    """Manages user accounts stored in SQLite database."""
+
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or DB_PATH
+        self._init_database()
+
+    def _init_database(self):
+        """Create users table if it doesn't exist."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    email TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+
+    def create_user(self, username: str, password: str, email: str = None) -> dict:
+        """
+        Create a new user account.
+
+        Args:
+            username: Unique username
+            password: Plain text password (will be hashed)
+            email: Optional email address
+
+        Returns:
+            dict: Created user data (without password)
+
+        Raises:
+            ValueError: If username already exists or invalid data
+        """
+        if not username or not username.strip():
+            raise ValueError("Username cannot be empty")
+        if not password or len(password) < 4:
+            raise ValueError("Password must be at least 4 characters")
+
+        password_hash = generate_password_hash(password)
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute('''
+                    INSERT INTO users (username, password_hash, email)
+                    VALUES (?, ?, ?)
+                ''', (username.strip(), password_hash, email.strip() if email else None))
+                conn.commit()
+
+                return self.get_user_by_id(cursor.lastrowid)
+        except sqlite3.IntegrityError:
+            raise ValueError(f"Username '{username}' already exists")
+
+    def authenticate(self, username: str, password: str) -> Optional[User]:
+        """
+        Authenticate a user with username and password.
+
+        Args:
+            username: Username
+            password: Plain text password
+
+        Returns:
+            User object if authentication successful, None otherwise
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT * FROM users WHERE username = ?',
+                (username.strip(),)
+            )
+            row = cursor.fetchone()
+
+            if row and check_password_hash(row['password_hash'], password):
+                return User.from_dict(dict(row))
+            return None
+
+    def get_user_by_id(self, user_id: int) -> Optional[dict]:
+        """Get user by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT id, username, email, created_at FROM users WHERE id = ?',
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_user_by_username(self, username: str) -> Optional[dict]:
+        """Get user by username."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT id, username, email, created_at FROM users WHERE username = ?',
+                (username.strip(),)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def load_user(self, user_id: int) -> Optional[User]:
+        """Load User object by ID (for Flask-Login)."""
+        data = self.get_user_by_id(user_id)
+        return User.from_dict(data) if data else None
+
+    def get_all_users(self) -> list:
+        """Get all users (without passwords)."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT id, username, email, created_at FROM users ORDER BY username'
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
 
 class BirthProfileManager:
@@ -32,25 +174,39 @@ class BirthProfileManager:
     def _init_database(self):
         """Create database tables if they don't exist."""
         with sqlite3.connect(self.db_path) as conn:
-            # Create birth_profiles table with family_group support
+            # Ensure users table exists first
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    email TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # Create birth_profiles table with family_group and user_id support
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS birth_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
                     birth_year INTEGER NOT NULL,
                     birth_month INTEGER NOT NULL,
                     birth_day INTEGER NOT NULL,
                     birth_hour INTEGER NOT NULL,
                     family_group TEXT DEFAULT 'default',
                     relationship TEXT DEFAULT '',
+                    user_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    UNIQUE(name, user_id)
                 )
             ''')
-            # Create prediction_cache table for caching astrology predictions
+            # Create prediction_cache table with user_id support
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS prediction_cache (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
                     lottery_type TEXT NOT NULL,
                     period INTEGER NOT NULL,
                     method TEXT NOT NULL,
@@ -59,51 +215,60 @@ class BirthProfileManager:
                     special INTEGER NOT NULL,
                     details TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(lottery_type, period, method, profile_ids)
+                    UNIQUE(user_id, lottery_type, period, method, profile_ids),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             ''')
-            # Create all_predictions_cache table for caching all algorithm results
+            # Create all_predictions_cache table with user_id support
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS all_predictions_cache (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
                     lottery_type TEXT NOT NULL,
                     period TEXT NOT NULL,
                     results TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(lottery_type, period)
+                    UNIQUE(user_id, lottery_type, period),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
                 )
             ''')
-            # Add family_group column if not exists (for existing databases)
-            try:
-                conn.execute('ALTER TABLE birth_profiles ADD COLUMN family_group TEXT DEFAULT "default"')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            try:
-                conn.execute('ALTER TABLE birth_profiles ADD COLUMN relationship TEXT DEFAULT ""')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+            # Migration: Add columns for existing databases
+            migration_queries = [
+                'ALTER TABLE birth_profiles ADD COLUMN family_group TEXT DEFAULT "default"',
+                'ALTER TABLE birth_profiles ADD COLUMN relationship TEXT DEFAULT ""',
+                'ALTER TABLE birth_profiles ADD COLUMN user_id INTEGER',
+                'ALTER TABLE prediction_cache ADD COLUMN user_id INTEGER',
+                'ALTER TABLE all_predictions_cache ADD COLUMN user_id INTEGER',
+            ]
+            for query in migration_queries:
+                try:
+                    conn.execute(query)
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
             conn.commit()
 
     def add_profile(self, name: str, birth_year: int, birth_month: int,
                     birth_day: int, birth_hour: int,
-                    family_group: str = 'default', relationship: str = '') -> dict:
+                    family_group: str = 'default', relationship: str = '',
+                    user_id: int = None) -> dict:
         """
         Add a new birth profile.
 
         Args:
-            name: Person's name (unique identifier)
+            name: Person's name (unique per user)
             birth_year: Birth year (e.g., 1990)
             birth_month: Birth month (1-12)
             birth_day: Birth day (1-31)
             birth_hour: Birth hour (0-23)
             family_group: Family group name (e.g., "王家", "李家")
             relationship: Relationship in family (e.g., "父親", "母親", "長子")
+            user_id: Owner user's ID
 
         Returns:
             dict: Created profile data
 
         Raises:
-            ValueError: If name already exists or invalid data
+            ValueError: If name already exists for this user or invalid data
         """
         # Validate inputs
         if not name or not name.strip():
@@ -121,94 +286,130 @@ class BirthProfileManager:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute('''
                     INSERT INTO birth_profiles
-                    (name, birth_year, birth_month, birth_day, birth_hour, family_group, relationship)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (name, birth_year, birth_month, birth_day, birth_hour, family_group, relationship, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (name.strip(), birth_year, birth_month, birth_day, birth_hour,
-                      family_group.strip() or 'default', relationship.strip()))
+                      family_group.strip() or 'default', relationship.strip(), user_id))
                 conn.commit()
 
-                return self.get_profile(name)
+                return self.get_profile(name, user_id)
 
         except sqlite3.IntegrityError:
             raise ValueError(f"Profile with name '{name}' already exists")
 
-    def get_profile(self, name: str) -> Optional[dict]:
+    def get_profile(self, name: str, user_id: int = None) -> Optional[dict]:
         """
         Get a profile by name.
 
         Args:
             name: Person's name
+            user_id: Owner user's ID (if None, searches all profiles)
 
         Returns:
             dict: Profile data or None if not found
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                'SELECT * FROM birth_profiles WHERE name = ?',
-                (name.strip(),)
-            )
+            if user_id is not None:
+                cursor = conn.execute(
+                    'SELECT * FROM birth_profiles WHERE name = ? AND user_id = ?',
+                    (name.strip(), user_id)
+                )
+            else:
+                cursor = conn.execute(
+                    'SELECT * FROM birth_profiles WHERE name = ?',
+                    (name.strip(),)
+                )
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def get_all_profiles(self) -> list:
+    def get_all_profiles(self, user_id: int = None) -> list:
         """
-        Get all profiles.
+        Get all profiles for a user.
+
+        Args:
+            user_id: Owner user's ID (if None, returns all profiles)
 
         Returns:
-            list: List of all profile dicts
+            list: List of profile dicts
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute('SELECT * FROM birth_profiles ORDER BY family_group, name')
+            if user_id is not None:
+                cursor = conn.execute(
+                    'SELECT * FROM birth_profiles WHERE user_id = ? ORDER BY family_group, name',
+                    (user_id,)
+                )
+            else:
+                cursor = conn.execute('SELECT * FROM birth_profiles ORDER BY family_group, name')
             return [dict(row) for row in cursor.fetchall()]
 
-    def get_profiles_by_family(self, family_group: str) -> list:
+    def get_profiles_by_family(self, family_group: str, user_id: int = None) -> list:
         """
         Get all profiles in a specific family group.
 
         Args:
             family_group: Family group name
+            user_id: Owner user's ID
 
         Returns:
             list: List of profile dicts in the family
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                'SELECT * FROM birth_profiles WHERE family_group = ? ORDER BY name',
-                (family_group.strip(),)
-            )
+            if user_id is not None:
+                cursor = conn.execute(
+                    'SELECT * FROM birth_profiles WHERE family_group = ? AND user_id = ? ORDER BY name',
+                    (family_group.strip(), user_id)
+                )
+            else:
+                cursor = conn.execute(
+                    'SELECT * FROM birth_profiles WHERE family_group = ? ORDER BY name',
+                    (family_group.strip(),)
+                )
             return [dict(row) for row in cursor.fetchall()]
 
-    def get_all_family_groups(self) -> list:
+    def get_all_family_groups(self, user_id: int = None) -> list:
         """
         Get list of all unique family groups.
+
+        Args:
+            user_id: Owner user's ID
 
         Returns:
             list: List of family group names with member counts
         """
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute('''
-                SELECT family_group, COUNT(*) as member_count
-                FROM birth_profiles
-                GROUP BY family_group
-                ORDER BY family_group
-            ''')
+            if user_id is not None:
+                cursor = conn.execute('''
+                    SELECT family_group, COUNT(*) as member_count
+                    FROM birth_profiles
+                    WHERE user_id = ?
+                    GROUP BY family_group
+                    ORDER BY family_group
+                ''', (user_id,))
+            else:
+                cursor = conn.execute('''
+                    SELECT family_group, COUNT(*) as member_count
+                    FROM birth_profiles
+                    GROUP BY family_group
+                    ORDER BY family_group
+                ''')
             return [{"name": row[0], "member_count": row[1]} for row in cursor.fetchall()]
 
-    def update_profile(self, name: str, **kwargs) -> Optional[dict]:
+    def update_profile(self, name: str, user_id: int = None, **kwargs) -> Optional[dict]:
         """
         Update an existing profile.
 
         Args:
             name: Person's name
+            user_id: Owner user's ID
             **kwargs: Fields to update (birth_year, birth_month, birth_day, birth_hour)
 
         Returns:
             dict: Updated profile data or None if not found
         """
-        profile = self.get_profile(name)
+        profile = self.get_profile(name, user_id)
         if not profile:
             return None
 
@@ -221,36 +422,49 @@ class BirthProfileManager:
 
         updates['updated_at'] = datetime.now().isoformat()
         set_clause = ', '.join(f'{k} = ?' for k in updates.keys())
-        values = list(updates.values()) + [name]
+
+        if user_id is not None:
+            values = list(updates.values()) + [name, user_id]
+            where_clause = 'WHERE name = ? AND user_id = ?'
+        else:
+            values = list(updates.values()) + [name]
+            where_clause = 'WHERE name = ?'
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                f'UPDATE birth_profiles SET {set_clause} WHERE name = ?',
+                f'UPDATE birth_profiles SET {set_clause} {where_clause}',
                 values
             )
             conn.commit()
 
-        return self.get_profile(name)
+        return self.get_profile(name, user_id)
 
-    def delete_profile(self, name: str) -> bool:
+    def delete_profile(self, name: str, user_id: int = None) -> bool:
         """
         Delete a profile by name and clear related cache.
 
         Args:
             name: Person's name
+            user_id: Owner user's ID
 
         Returns:
             bool: True if deleted, False if not found
         """
-        profile = self.get_profile(name)
+        profile = self.get_profile(name, user_id)
         if not profile:
             return False
 
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                'DELETE FROM birth_profiles WHERE name = ?',
-                (name.strip(),)
-            )
+            if user_id is not None:
+                cursor = conn.execute(
+                    'DELETE FROM birth_profiles WHERE name = ? AND user_id = ?',
+                    (name.strip(), user_id)
+                )
+            else:
+                cursor = conn.execute(
+                    'DELETE FROM birth_profiles WHERE name = ?',
+                    (name.strip(),)
+                )
             # Clear all cache entries that include this profile
             conn.execute('DELETE FROM prediction_cache WHERE profile_ids LIKE ?',
                         (f'%{profile["id"]}%',))
@@ -308,7 +522,8 @@ class PredictionCacheManager:
         BirthProfileManager(self.db_path)
 
     def get_cached_prediction(self, lottery_type: str, period: int,
-                              method: str, profile_ids: List[int]) -> Optional[dict]:
+                              method: str, profile_ids: List[int],
+                              user_id: int = None) -> Optional[dict]:
         """
         Get cached prediction if exists.
 
@@ -317,6 +532,7 @@ class PredictionCacheManager:
             period: Lottery period number
             method: 'ziwei' or 'zodiac'
             profile_ids: List of profile IDs used
+            user_id: Owner user's ID
 
         Returns:
             dict with numbers, special, details or None if not cached
@@ -326,10 +542,16 @@ class PredictionCacheManager:
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute('''
-                SELECT numbers, special, details FROM prediction_cache
-                WHERE lottery_type = ? AND period = ? AND method = ? AND profile_ids = ?
-            ''', (lottery_type, period, method, sorted_ids))
+            if user_id is not None:
+                cursor = conn.execute('''
+                    SELECT numbers, special, details FROM prediction_cache
+                    WHERE user_id = ? AND lottery_type = ? AND period = ? AND method = ? AND profile_ids = ?
+                ''', (user_id, lottery_type, period, method, sorted_ids))
+            else:
+                cursor = conn.execute('''
+                    SELECT numbers, special, details FROM prediction_cache
+                    WHERE lottery_type = ? AND period = ? AND method = ? AND profile_ids = ?
+                ''', (lottery_type, period, method, sorted_ids))
             row = cursor.fetchone()
 
             if row:
@@ -342,9 +564,9 @@ class PredictionCacheManager:
 
     def save_prediction(self, lottery_type: str, period: int, method: str,
                        profile_ids: List[int], numbers: List[int],
-                       special: int, details: dict) -> None:
+                       special: int, details: dict, user_id: int = None) -> None:
         """
-        Save prediction to cache.
+        Save prediction to cache. Only keeps latest period per user.
 
         Args:
             lottery_type: 'big' or 'super'
@@ -354,17 +576,30 @@ class PredictionCacheManager:
             numbers: Predicted numbers
             special: Special number
             details: Full prediction details
+            user_id: Owner user's ID
         """
         sorted_ids = json.dumps(sorted(profile_ids))
         numbers_json = json.dumps(numbers)
         details_json = json.dumps(details, ensure_ascii=False)
 
         with sqlite3.connect(self.db_path) as conn:
+            # Clear old cache for this user/type/method (only keep latest period)
+            if user_id is not None:
+                conn.execute('''
+                    DELETE FROM prediction_cache
+                    WHERE user_id = ? AND lottery_type = ? AND method = ?
+                ''', (user_id, lottery_type, method))
+            else:
+                conn.execute('''
+                    DELETE FROM prediction_cache
+                    WHERE user_id IS NULL AND lottery_type = ? AND method = ?
+                ''', (lottery_type, method))
+
             conn.execute('''
-                INSERT OR REPLACE INTO prediction_cache
-                (lottery_type, period, method, profile_ids, numbers, special, details)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (lottery_type, period, method, sorted_ids, numbers_json, special, details_json))
+                INSERT INTO prediction_cache
+                (user_id, lottery_type, period, method, profile_ids, numbers, special, details)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (user_id, lottery_type, period, method, sorted_ids, numbers_json, special, details_json))
             conn.commit()
 
     def clear_cache_for_profile(self, profile_id: int) -> int:
@@ -385,24 +620,37 @@ class PredictionCacheManager:
             conn.commit()
             return cursor.rowcount
 
-    def clear_all_cache(self) -> int:
-        """Clear all cached predictions."""
+    def clear_all_cache(self, user_id: int = None) -> int:
+        """Clear all cached predictions for a user."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute('DELETE FROM prediction_cache')
+            if user_id is not None:
+                cursor = conn.execute('DELETE FROM prediction_cache WHERE user_id = ?', (user_id,))
+            else:
+                cursor = conn.execute('DELETE FROM prediction_cache')
             conn.commit()
             return cursor.rowcount
 
-    def get_cache_stats(self) -> dict:
+    def get_cache_stats(self, user_id: int = None) -> dict:
         """Get cache statistics."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute('SELECT COUNT(*) FROM prediction_cache')
+            if user_id is not None:
+                cursor = conn.execute('SELECT COUNT(*) FROM prediction_cache WHERE user_id = ?', (user_id,))
+            else:
+                cursor = conn.execute('SELECT COUNT(*) FROM prediction_cache')
             total = cursor.fetchone()[0]
 
-            cursor = conn.execute('''
-                SELECT lottery_type, method, COUNT(*) as count
-                FROM prediction_cache
-                GROUP BY lottery_type, method
-            ''')
+            if user_id is not None:
+                cursor = conn.execute('''
+                    SELECT lottery_type, method, COUNT(*) as count
+                    FROM prediction_cache WHERE user_id = ?
+                    GROUP BY lottery_type, method
+                ''', (user_id,))
+            else:
+                cursor = conn.execute('''
+                    SELECT lottery_type, method, COUNT(*) as count
+                    FROM prediction_cache
+                    GROUP BY lottery_type, method
+                ''')
             breakdown = [{"lottery_type": r[0], "method": r[1], "count": r[2]}
                         for r in cursor.fetchall()]
 
@@ -417,66 +665,101 @@ class AllPredictionsCacheManager:
         # Ensure tables exist
         BirthProfileManager(self.db_path)
 
-    def get_cached_predictions(self, lottery_type: str, period: str) -> Optional[dict]:
+    def get_cached_predictions(self, lottery_type: str, period: str,
+                               user_id: int = None) -> Optional[dict]:
         """
         Get cached predictions for all algorithms.
 
         Args:
             lottery_type: 'big' or 'super'
             period: Lottery period number (as string)
+            user_id: Owner user's ID
 
         Returns:
             dict with all algorithm results or None if not cached
         """
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute('''
-                SELECT results FROM all_predictions_cache
-                WHERE lottery_type = ? AND period = ?
-            ''', (lottery_type, period))
+            if user_id is not None:
+                cursor = conn.execute('''
+                    SELECT results FROM all_predictions_cache
+                    WHERE user_id = ? AND lottery_type = ? AND period = ?
+                ''', (user_id, lottery_type, period))
+            else:
+                cursor = conn.execute('''
+                    SELECT results FROM all_predictions_cache
+                    WHERE lottery_type = ? AND period = ?
+                ''', (lottery_type, period))
             row = cursor.fetchone()
 
             if row:
                 return json.loads(row['results'])
             return None
 
-    def save_predictions(self, lottery_type: str, period: str, results: dict) -> None:
+    def save_predictions(self, lottery_type: str, period: str, results: dict,
+                        user_id: int = None) -> None:
         """
-        Save all algorithm predictions to cache.
+        Save all algorithm predictions to cache. Only keeps latest period per user.
 
         Args:
             lottery_type: 'big' or 'super'
             period: Lottery period number (as string)
             results: All algorithm results dict
+            user_id: Owner user's ID
         """
         results_json = json.dumps(results, ensure_ascii=False)
 
         with sqlite3.connect(self.db_path) as conn:
+            # Clear old cache for this user/type (only keep latest period)
+            if user_id is not None:
+                conn.execute('''
+                    DELETE FROM all_predictions_cache
+                    WHERE user_id = ? AND lottery_type = ?
+                ''', (user_id, lottery_type))
+            else:
+                conn.execute('''
+                    DELETE FROM all_predictions_cache
+                    WHERE user_id IS NULL AND lottery_type = ?
+                ''', (lottery_type,))
+
             conn.execute('''
-                INSERT OR REPLACE INTO all_predictions_cache
-                (lottery_type, period, results)
-                VALUES (?, ?, ?)
-            ''', (lottery_type, period, results_json))
+                INSERT INTO all_predictions_cache
+                (user_id, lottery_type, period, results)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, lottery_type, period, results_json))
             conn.commit()
 
-    def clear_all_cache(self) -> int:
-        """Clear all cached predictions."""
+    def clear_all_cache(self, user_id: int = None) -> int:
+        """Clear all cached predictions for a user."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute('DELETE FROM all_predictions_cache')
+            if user_id is not None:
+                cursor = conn.execute('DELETE FROM all_predictions_cache WHERE user_id = ?', (user_id,))
+            else:
+                cursor = conn.execute('DELETE FROM all_predictions_cache')
             conn.commit()
             return cursor.rowcount
 
-    def get_cache_stats(self) -> dict:
+    def get_cache_stats(self, user_id: int = None) -> dict:
         """Get cache statistics."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute('SELECT COUNT(*) FROM all_predictions_cache')
+            if user_id is not None:
+                cursor = conn.execute('SELECT COUNT(*) FROM all_predictions_cache WHERE user_id = ?', (user_id,))
+            else:
+                cursor = conn.execute('SELECT COUNT(*) FROM all_predictions_cache')
             total = cursor.fetchone()[0]
 
-            cursor = conn.execute('''
-                SELECT lottery_type, period, created_at
-                FROM all_predictions_cache
-                ORDER BY created_at DESC
-            ''')
+            if user_id is not None:
+                cursor = conn.execute('''
+                    SELECT lottery_type, period, created_at
+                    FROM all_predictions_cache WHERE user_id = ?
+                    ORDER BY created_at DESC
+                ''', (user_id,))
+            else:
+                cursor = conn.execute('''
+                    SELECT lottery_type, period, created_at
+                    FROM all_predictions_cache
+                    ORDER BY created_at DESC
+                ''')
             entries = [{"lottery_type": r[0], "period": r[1], "created_at": r[2]}
                       for r in cursor.fetchall()]
 

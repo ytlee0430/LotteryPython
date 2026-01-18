@@ -247,26 +247,23 @@ predict/astrology/birth_data.db
 
 | 資料表名稱 | 用途 |
 |-----------|------|
-| `profiles` | 生辰資料儲存 |
-| `prediction_cache` | 命理預測快取 |
-| `all_predictions_cache` | 所有演算法預測快取 |
+| `users` | 會員帳號資料 |
+| `birth_profiles` | 生辰資料儲存（綁定會員）|
+| `prediction_cache` | 命理預測快取（按會員隔離）|
+| `all_predictions_cache` | 所有演算法預測快取（按會員隔離）|
 
 ---
 
-### profiles 資料表
+### users 資料表
 
-儲存使用者生辰八字資料，支援家庭分組。
+儲存會員帳號資料。
 
 ```sql
-CREATE TABLE profiles (
+CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    birth_year INTEGER NOT NULL,
-    birth_month INTEGER NOT NULL,
-    birth_day INTEGER NOT NULL,
-    birth_hour INTEGER NOT NULL,
-    family_group TEXT DEFAULT 'default',
-    relationship TEXT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    email TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 ```
@@ -274,24 +271,61 @@ CREATE TABLE profiles (
 | 欄位 | 類型 | 約束 | 說明 |
 |------|------|------|------|
 | id | INTEGER | PK, AUTO | 流水編號 |
-| name | TEXT | UNIQUE, NOT NULL | 姓名（唯一識別）|
+| username | TEXT | UNIQUE, NOT NULL | 帳號（唯一）|
+| password_hash | TEXT | NOT NULL | 加密後的密碼 |
+| email | TEXT | 可為空 | Email |
+| created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
+
+---
+
+### birth_profiles 資料表
+
+儲存使用者生辰八字資料，支援家庭分組，綁定會員。
+
+```sql
+CREATE TABLE birth_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    birth_year INTEGER NOT NULL,
+    birth_month INTEGER NOT NULL,
+    birth_day INTEGER NOT NULL,
+    birth_hour INTEGER NOT NULL,
+    family_group TEXT DEFAULT 'default',
+    relationship TEXT,
+    user_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(name, user_id)
+)
+```
+
+| 欄位 | 類型 | 約束 | 說明 |
+|------|------|------|------|
+| id | INTEGER | PK, AUTO | 流水編號 |
+| name | TEXT | NOT NULL | 姓名（每用戶唯一）|
 | birth_year | INTEGER | NOT NULL | 國曆出生年 |
 | birth_month | INTEGER | NOT NULL | 出生月 (1-12) |
 | birth_day | INTEGER | NOT NULL | 出生日 (1-31) |
 | birth_hour | INTEGER | NOT NULL | 出生時 (0-23) |
 | family_group | TEXT | DEFAULT 'default' | 家庭群組名稱 |
 | relationship | TEXT | 可為空 | 家庭關係（父親、母親等）|
+| user_id | INTEGER | FK | 所屬會員 ID |
 | created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
+| updated_at | TIMESTAMP | DEFAULT NOW | 更新時間 |
+
+**唯一索引**: `(name, user_id)` - 同一會員下姓名不可重複
 
 ---
 
 ### prediction_cache 資料表
 
-儲存命理預測（紫微斗數、西洋星座）快取結果。
+儲存命理預測（紫微斗數、西洋星座）快取結果，按會員隔離。
 
 ```sql
 CREATE TABLE prediction_cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
     lottery_type TEXT NOT NULL,
     period TEXT NOT NULL,
     method TEXT NOT NULL,
@@ -300,13 +334,15 @@ CREATE TABLE prediction_cache (
     special INTEGER NOT NULL,
     details TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(lottery_type, period, method, profile_ids)
+    UNIQUE(user_id, lottery_type, period, method, profile_ids),
+    FOREIGN KEY (user_id) REFERENCES users(id)
 )
 ```
 
 | 欄位 | 類型 | 約束 | 說明 |
 |------|------|------|------|
 | id | INTEGER | PK, AUTO | 流水編號 |
+| user_id | INTEGER | FK | 所屬會員 ID |
 | lottery_type | TEXT | NOT NULL | 彩種類型 (`big`/`super`) |
 | period | TEXT | NOT NULL | 預測期別 |
 | method | TEXT | NOT NULL | 預測方法 (`ziwei`/`zodiac`) |
@@ -316,34 +352,41 @@ CREATE TABLE prediction_cache (
 | details | TEXT | 可為空 | 詳細資訊（JSON）|
 | created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
 
-**唯一索引**: `(lottery_type, period, method, profile_ids)`
+**唯一索引**: `(user_id, lottery_type, period, method, profile_ids)`
+
+**快取策略**: 每用戶每彩種每方法只保留最新一期
 
 ---
 
 ### all_predictions_cache 資料表
 
-儲存所有演算法預測結果的快取。
+儲存所有演算法預測結果的快取，按會員隔離。
 
 ```sql
 CREATE TABLE all_predictions_cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
     lottery_type TEXT NOT NULL,
     period TEXT NOT NULL,
     results TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(lottery_type, period)
+    UNIQUE(user_id, lottery_type, period),
+    FOREIGN KEY (user_id) REFERENCES users(id)
 )
 ```
 
 | 欄位 | 類型 | 約束 | 說明 |
 |------|------|------|------|
 | id | INTEGER | PK, AUTO | 流水編號 |
+| user_id | INTEGER | FK | 所屬會員 ID |
 | lottery_type | TEXT | NOT NULL | 彩種類型 (`big`/`super`) |
 | period | TEXT | NOT NULL | 預測期別 |
 | results | TEXT | NOT NULL | 所有預測結果（JSON）|
 | created_at | TIMESTAMP | DEFAULT NOW | 建立時間 |
 
-**唯一索引**: `(lottery_type, period)`
+**唯一索引**: `(user_id, lottery_type, period)`
+
+**快取策略**: 每用戶每彩種只保留最新一期
 
 ---
 
