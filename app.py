@@ -194,6 +194,7 @@ def combin():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/history', methods=['POST'])
+@login_required
 def history():
     data = request.get_json()
     if not data:
