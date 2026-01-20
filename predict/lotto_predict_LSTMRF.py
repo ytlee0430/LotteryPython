@@ -10,9 +10,9 @@ SEQ_LEN = 10
 COLUMNS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]
 
 
-def encode(nums):
-    v = np.zeros(49, dtype=np.float32)
-    v[[n - 1 for n in nums]] = 1.0
+def encode(nums, max_num=49):
+    v = np.zeros(max_num, dtype=np.float32)
+    v[[n - 1 for n in nums if 1 <= n <= max_num]] = 1.0
     return v
 
 
@@ -21,7 +21,7 @@ def consec(nums):
     return sum(1 for x, y in zip(s, s[1:]) if y - x == 1)
 
 
-def _build_features(df: pd.DataFrame) -> np.ndarray:
+def _build_features(df: pd.DataFrame, max_num=49) -> np.ndarray:
     df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"])
     hot_sets = []
@@ -33,7 +33,7 @@ def _build_features(df: pd.DataFrame) -> np.ndarray:
     for i, row in df.iterrows():
         nums = row[COLUMNS].tolist()
         f = np.concatenate([
-            encode(nums),
+            encode(nums, max_num),
             np.eye(7)[row["Date"].weekday()],
             np.eye(6)[consec(nums)],
             [sum(1 for n in nums if n in hot_sets[i])],
@@ -42,19 +42,32 @@ def _build_features(df: pd.DataFrame) -> np.ndarray:
     return np.stack(feats)
 
 
-def _build_sequences(feats: np.ndarray, df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+def _build_sequences(feats: np.ndarray, df: pd.DataFrame, max_num=49) -> tuple[np.ndarray, np.ndarray]:
     X, y = [], []
     for i in range(len(feats) - SEQ_LEN):
         X.append(feats[i : i + SEQ_LEN])
         nxt_nums = df.loc[i + SEQ_LEN, COLUMNS].tolist()
-        y.append(encode(nxt_nums))
+        y.append(encode(nxt_nums, max_num))
     return np.array(X), np.array(y)
 
 
-def predict_lstm_rf(df: pd.DataFrame):
-    """Train the hybrid LSTM/RF model on ``df`` and return numbers."""
-    feats = _build_features(df)
-    X, y = _build_sequences(feats, df)
+def predict_lstm_rf(df: pd.DataFrame, lottery_type='big'):
+    """Train the hybrid LSTM/RF model on ``df`` and return numbers.
+
+    Args:
+        df: DataFrame with historical lottery data
+        lottery_type: 'big' for 大樂透 (1-49), 'super' for 威力彩 (1-38, special 1-8)
+    """
+    # Determine number ranges based on lottery type
+    if lottery_type == 'super':
+        max_num = 38
+        max_special = 8
+    else:  # big
+        max_num = 49
+        max_special = 49
+
+    feats = _build_features(df, max_num)
+    X, y = _build_sequences(feats, df, max_num)
 
     split = int(len(X) * 0.9)
     Xtr, Xv = X[:split], X[split:]
@@ -64,7 +77,7 @@ def predict_lstm_rf(df: pd.DataFrame):
         layers.Input(shape=Xtr.shape[1:]),
         layers.LSTM(64),
         layers.Dense(128, activation="relu"),
-        layers.Dense(49, activation="sigmoid"),
+        layers.Dense(max_num, activation="sigmoid"),
     ])
     model.compile("adam", "binary_crossentropy")
     model.fit(Xtr, ytr, epochs=25, batch_size=32, validation_data=(Xv, yv), verbose=0)
@@ -80,7 +93,12 @@ def predict_lstm_rf(df: pd.DataFrame):
     rf_spec.fit(Xtr_s, ytr_s)
     special = rf_spec.predict(feats[0].reshape(1, -1))[0]
 
-    return sorted(main6.tolist()), int(special)
+    # Ensure special is within valid range
+    special = int(special)
+    if special < 1 or special > max_special:
+        special = max(1, min(special, max_special))
+
+    return sorted(main6.tolist()), special
 
 
 if __name__ == "__main__":

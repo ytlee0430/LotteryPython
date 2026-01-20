@@ -110,7 +110,7 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
 
     # Cold-50
     try:
-        nums_cold, sp_cold = predict_cold50(df, today_index)
+        nums_cold, sp_cold = predict_cold50(df, today_index, lottery_type=lottery_type)
         results["Cold-50"] = {
             "next_period": next_period,
             "numbers": sorted(nums_cold),
@@ -134,7 +134,7 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
 
     # LSTM
     try:
-        nums_lstm, sp_lstm = predict_lstm(df)
+        nums_lstm, sp_lstm = predict_lstm(df, lottery_type=lottery_type)
         results["LSTM"] = {
             "next_period": next_period,
             "numbers": sorted(nums_lstm),
@@ -145,7 +145,7 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
 
     # LSTM-RF
     try:
-        nums_ai, sp_ai = predict_lstm_rf(df)
+        nums_ai, sp_ai = predict_lstm_rf(df, lottery_type=lottery_type)
         results["LSTM-RF"] = {
             "next_period": next_period,
             "numbers": sorted(nums_ai),

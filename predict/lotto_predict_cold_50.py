@@ -9,7 +9,7 @@ Based on the "regression to mean" hypothesis.
 from collections import Counter
 
 
-def predict_cold50(df, today_index, window=50):
+def predict_cold50(df, today_index, window=50, lottery_type='big'):
     """
     Predict using the coldest (least frequent) numbers from recent draws.
 
@@ -17,6 +17,7 @@ def predict_cold50(df, today_index, window=50):
         df: DataFrame with historical lottery data
         today_index: Current index for prediction
         window: Number of recent draws to analyze (default 50)
+        lottery_type: 'big' for 大樂透 (1-49), 'super' for 威力彩 (1-38, special 1-8)
 
     Returns:
         tuple: (main_numbers, special_number)
@@ -25,8 +26,13 @@ def predict_cold50(df, today_index, window=50):
     start_idx = max(0, today_index - window)
     train = df.iloc[start_idx:today_index]
 
-    # Determine number range from data
-    max_num = int(df[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].max().max())
+    # Determine number range based on lottery type
+    if lottery_type == 'super':
+        max_num = 38
+        max_special = 8
+    else:  # big
+        max_num = 49
+        max_special = 49
 
     # Count frequency of all numbers in recent draws
     nums = train[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].values.ravel()
@@ -42,9 +48,9 @@ def predict_cold50(df, today_index, window=50):
     # Take the 6 coldest numbers
     main = coldest[:6]
 
-    # For special number, find the coldest special
+    # For special number, find the coldest special within valid range
     special_counts = Counter(train['Special'].values)
-    all_specials = list(range(1, max_num + 1))
+    all_specials = list(range(1, max_special + 1))
     coldest_special = min(all_specials, key=lambda x: special_counts.get(x, 0))
 
     return [int(n) for n in main], int(coldest_special)
