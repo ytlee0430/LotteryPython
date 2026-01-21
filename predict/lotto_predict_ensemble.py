@@ -71,7 +71,7 @@ def collect_predictions(df, today_index, previous_results=None):
     
     # Hot-50
     try:
-        main_nums, special = predict_hot50(df, today_index)
+        main_nums, special, _ = predict_hot50(df, today_index)
         predictions.append({
             "name": "Hot-50",
             "numbers": list(main_nums),
@@ -83,7 +83,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # Cold-50
     try:
-        nums_cold, sp_cold = predict_cold50(df, today_index)
+        nums_cold, sp_cold, _ = predict_cold50(df, today_index)
         predictions.append({
             "name": "Cold-50",
             "numbers": list(nums_cold),
@@ -95,7 +95,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # RandomForest, GradientBoosting, KNN
     try:
-        alg_results, sp_rf = predict_algorithms(df)
+        alg_results, sp_rf, _ = predict_algorithms(df)
         for name, nums in alg_results.items():
             predictions.append({
                 "name": name,
@@ -108,7 +108,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # XGBoost
     try:
-        nums_xgb, sp_xgb = predict_xgboost(df, today_index)
+        nums_xgb, sp_xgb, _ = predict_xgboost(df, today_index)
         predictions.append({
             "name": "XGBoost",
             "numbers": list(nums_xgb),
@@ -120,7 +120,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # LSTM
     try:
-        nums_lstm, sp_lstm = predict_lstm(df)
+        nums_lstm, sp_lstm, _ = predict_lstm(df)
         predictions.append({
             "name": "LSTM",
             "numbers": list(nums_lstm),
@@ -132,7 +132,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # LSTM-RF
     try:
-        nums_ai, sp_ai = predict_lstm_rf(df)
+        nums_ai, sp_ai, _ = predict_lstm_rf(df)
         predictions.append({
             "name": "LSTM-RF",
             "numbers": list(nums_ai),
@@ -144,7 +144,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # Markov Chain
     try:
-        nums_markov, sp_markov = predict_markov(df, today_index)
+        nums_markov, sp_markov, _ = predict_markov(df, today_index)
         predictions.append({
             "name": "Markov",
             "numbers": list(nums_markov),
@@ -156,7 +156,7 @@ def collect_predictions(df, today_index, previous_results=None):
 
     # Pattern Analysis
     try:
-        nums_pattern, sp_pattern = predict_pattern(df, today_index)
+        nums_pattern, sp_pattern, _ = predict_pattern(df, today_index)
         predictions.append({
             "name": "Pattern",
             "numbers": list(nums_pattern),
@@ -257,7 +257,22 @@ def predict_ensemble(df, today_index, weights=None, previous_results=None):
     # Weighted voting for special number
     special = weighted_vote_special(predictions)
 
-    return main_numbers, special
+    # Get top 10 candidates with vote weights
+    vote_counter = Counter()
+    for pred in predictions:
+        weight = pred.get("weight", 1.0)
+        for num in pred["numbers"]:
+            vote_counter[num] += weight
+
+    top_10 = [[int(num), round(float(votes), 2)] for num, votes in vote_counter.most_common(10)]
+
+    details = {
+        "type": "ensemble_voting",
+        "top_10": top_10,
+        "models_used": len(predictions),
+        "note": "Weighted voting from multiple algorithms"
+    }
+    return main_numbers, special, details
 
 
 def get_vote_details(df, today_index, previous_results=None):

@@ -211,7 +211,18 @@ def predict_pattern(df, today_index):
     special_counts = Counter(df.iloc[:today_index].tail(50)['Special'])
     special = special_counts.most_common(1)[0][0]
 
-    return [int(n) for n in predicted_nums], int(special)
+    # Get top 10 most common special numbers as details
+    top_10_special = [[int(n), int(count)] for n, count in special_counts.most_common(10)]
+
+    details = {
+        "type": "pattern_analysis",
+        "target_odd_even": target_odd_even,
+        "target_high_low": target_high_low,
+        "sum_range": [int(sum_range[0]), int(sum_range[1])],
+        "top_10": top_10_special,
+        "note": "Pattern-based selection (奇偶/高低比例匹配)"
+    }
+    return [int(n) for n in predicted_nums], int(special), details
 
 
 def get_pattern_analysis(df, today_index):

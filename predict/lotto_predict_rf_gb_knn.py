@@ -50,6 +50,7 @@ def predict_algorithms(df):
     }
 
     results = {}
+    details = {}
     for name, model in models.items():
         model.fit(X, y)
         probs = model.predict_proba(last_feat)
@@ -60,15 +61,24 @@ def predict_algorithms(df):
             else:
                 prob_vec.append(0.0)
         prob_vec = np.array(prob_vec)
+
+        # Get top 10 candidates with scores
+        top_indices = np.argsort(prob_vec)[-10:][::-1]
+        top_10 = [[int(idx + 1), round(float(prob_vec[idx]), 3)] for idx in top_indices]
+
         nums = np.argsort(prob_vec)[-6:][::-1] + 1
         results[name] = nums.tolist()
+        details[name] = {
+            "type": "probability_ranking",
+            "top_10": top_10
+        }
 
     y_spec = df["Special"].iloc[HISTORY:].values
     spec_model = RandomForestClassifier(n_estimators=100, random_state=42)
     spec_model.fit(X, y_spec)
     special = int(spec_model.predict(last_feat)[0])
 
-    return results, special
+    return results, special, details
 
 
 if __name__ == "__main__":

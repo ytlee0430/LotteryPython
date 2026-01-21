@@ -41,6 +41,24 @@
         /* Number alignment */
         .lotto-num { display: inline-block; width: 28px; text-align: center; margin-right: 4px; font-family: monospace; font-size: 1.1em; background: #e9ecef; border-radius: 50%; height: 28px; line-height: 28px; }
         td.numbers-col { white-space: nowrap; }
+
+        /* Details accordion styles */
+        .details-btn { background: #6c757d; padding: 4px 8px; font-size: 12px; border-radius: 4px; cursor: pointer; }
+        .details-btn:hover { background: #5a6268; }
+        .details-btn.astrology { background: #6f42c1; }
+        .details-btn.astrology:hover { background: #5a32a3; }
+        .details-row { display: none; }
+        .details-row.show { display: table-row; }
+        .details-cell { background: #f8f9fa; padding: 15px !important; }
+        .details-content { font-size: 14px; }
+        .top10-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; max-width: 400px; }
+        .top10-item { background: #e9ecef; padding: 8px; border-radius: 4px; text-align: center; }
+        .top10-item .rank { font-size: 11px; color: #666; }
+        .top10-item .num { font-size: 18px; font-weight: bold; color: #333; }
+        .top10-item .score { font-size: 11px; color: #888; }
+        .astrology-text { background: #f3e8ff; padding: 12px; border-radius: 8px; border-left: 4px solid #6f42c1; white-space: pre-wrap; line-height: 1.6; }
+        .pattern-info { background: #e8f4fd; padding: 12px; border-radius: 8px; border-left: 4px solid #0d6efd; }
+        .pattern-info span { display: inline-block; margin-right: 15px; }
     </style>
 </head>
 <body>
@@ -64,7 +82,7 @@
                 <option value="big">Big Lottery (大樂透)</option>
             </select>
         </div>
-        
+
         <div class="control-group">
             <label for="action">Action</label>
             <select id="action">
@@ -75,7 +93,18 @@
                 <option value="history">History (歷史資料)</option>
             </select>
         </div>
-        
+
+        <div class="control-group">
+            <label for="geminiModel">Gemini Model</label>
+            <select id="geminiModel" onchange="updateGeminiModel()">
+                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b</option>
+            </select>
+        </div>
+
         <div class="control-group" style="justify-content: flex-end;">
             <button onclick="runAction()" id="runBtn">Run</button>
         </div>
@@ -85,6 +114,38 @@
     <div id="results"></div>
 
     <script>
+        // Load current Gemini model on page load
+        document.addEventListener('DOMContentLoaded', loadGeminiConfig);
+
+        async function loadGeminiConfig() {
+            try {
+                const response = await fetch('/config/gemini');
+                const data = await response.json();
+                if (data.model) {
+                    document.getElementById('geminiModel').value = data.model;
+                }
+            } catch (e) {
+                console.error('Failed to load Gemini config:', e);
+            }
+        }
+
+        async function updateGeminiModel() {
+            const model = document.getElementById('geminiModel').value;
+            try {
+                const response = await fetch('/config/gemini', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: model })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                console.error('Failed to update Gemini model:', e);
+            }
+        }
+
         async function runAction() {
             const type = document.getElementById('type').value;
             const action = document.getElementById('action').value;
@@ -160,9 +221,10 @@
                 if (isPrediction) {
                     // Check if any result has from_cache field (astrology endpoint)
                     const hasCache = Object.values(displayData).some(val => val && val.from_cache !== undefined);
+                    const hasDetails = Object.values(displayData).some(val => val && val.details);
 
                     let tableHtml = `
-                        <table>
+                        <table id="predictionTable">
                             <thead>
                                 <tr>
                                     <th>Algorithm</th>
@@ -170,16 +232,19 @@
                                     <th>Numbers</th>
                                     <th>Special</th>
                                     ${hasCache ? '<th>Cache</th>' : ''}
+                                    ${hasDetails ? '<th>Details</th>' : ''}
                                 </tr>
                             </thead>
                             <tbody>
                     `;
 
+                    let rowIndex = 0;
                     for (const [algo, result] of Object.entries(displayData)) {
+                        const isAstrology = algo.startsWith('Astrology');
                         tableHtml += `<tr><td><strong>${algo}</strong></td>`;
 
                         if (result.error) {
-                            tableHtml += `<td colspan="${hasCache ? 4 : 3}" class="error-text">Error: ${result.error}</td>`;
+                            tableHtml += `<td colspan="${(hasCache ? 1 : 0) + (hasDetails ? 1 : 0) + 3}" class="error-text">Error: ${result.error}</td>`;
                         } else {
                             // Format numbers as badges or simple list
                             const nums = Array.isArray(result.numbers)
@@ -195,8 +260,29 @@
                                 <td class="special-num">${result.special}</td>
                                 ${hasCache ? `<td>${cacheStatus}</td>` : ''}
                             `;
+
+                            if (hasDetails) {
+                                if (result.details) {
+                                    const btnClass = isAstrology ? 'details-btn astrology' : 'details-btn';
+                                    const btnIcon = isAstrology ? '🔮' : '📊';
+                                    tableHtml += `<td><button class="${btnClass}" onclick="toggleDetails(${rowIndex})">${btnIcon} 詳細</button></td>`;
+                                } else {
+                                    tableHtml += `<td>-</td>`;
+                                }
+                            }
                         }
                         tableHtml += `</tr>`;
+
+                        // Add details row (hidden by default)
+                        if (result.details && !result.error) {
+                            const colSpan = 4 + (hasCache ? 1 : 0) + (hasDetails ? 1 : 0);
+                            tableHtml += `<tr class="details-row" id="details-${rowIndex}">
+                                <td colspan="${colSpan}" class="details-cell">
+                                    <div class="details-content">${renderDetails(algo, result.details)}</div>
+                                </td>
+                            </tr>`;
+                        }
+                        rowIndex++;
                     }
 
                     tableHtml += `</tbody></table>`;
@@ -289,6 +375,95 @@
             });
             
             rows.forEach(row => tbody.appendChild(row));
+        }
+
+        function toggleDetails(index) {
+            const detailsRow = document.getElementById(`details-${index}`);
+            if (detailsRow) {
+                detailsRow.classList.toggle('show');
+            }
+        }
+
+        function renderDetails(algo, details) {
+            if (!details) return '-';
+
+            // Astrology algorithms - show analysis text
+            if (algo.startsWith('Astrology')) {
+                if (Array.isArray(details)) {
+                    // It's predictions array from astrology
+                    let html = '<div class="astrology-text">';
+                    html += '<strong>🔮 命理分析：</strong><br><br>';
+                    details.forEach((pred, i) => {
+                        const analysis = pred.analysis || pred.explanation || '';
+                        const name = pred.name || pred.profile_name || '分析 ' + (i+1);
+                        html += `<strong>${name}`;
+                        if (pred.zodiac) html += ` (${pred.zodiac})`;
+                        html += `:</strong><br>`;
+                        if (analysis) {
+                            html += analysis + '<br>';
+                        }
+                        if (pred.lucky_element) {
+                            html += `<em>幸運元素: ${pred.lucky_element}</em><br>`;
+                        }
+                        html += `號碼: ${pred.numbers?.join(', ') || '-'} + ${pred.special || '-'}<br><br>`;
+                    });
+                    html += '</div>';
+                    return html;
+                }
+                return '<div class="astrology-text">' + JSON.stringify(details) + '</div>';
+            }
+
+            // Pattern analysis - show pattern info
+            if (details.type === 'pattern_analysis') {
+                let html = '<div class="pattern-info">';
+                html += `<strong>📊 模式分析：</strong><br>`;
+                html += `<span>奇偶比: ${details.target_odd_even}</span>`;
+                html += `<span>高低比: ${details.target_high_low}</span>`;
+                html += `<span>總和範圍: ${details.sum_range[0]} - ${details.sum_range[1]}</span>`;
+                if (details.note) html += `<br><em>${details.note}</em>`;
+                html += '</div>';
+
+                if (details.top_10) {
+                    html += '<br><strong>特別號 Top 10:</strong>';
+                    html += renderTop10Grid(details.top_10, '次');
+                }
+                return html;
+            }
+
+            // Other algorithms - show top 10 candidates
+            if (details.top_10) {
+                let scoreLabel = '分數';
+                if (details.type === 'frequency_ranking') scoreLabel = '次數';
+                if (details.type === 'cold_frequency_ranking') scoreLabel = '次數';
+                if (details.type === 'transition_probability') scoreLabel = '機率';
+                if (details.type === 'ensemble_voting') scoreLabel = '票數';
+
+                let html = `<strong>📊 候選號碼 Top 10:</strong>`;
+                if (details.note) html += `<br><em style="color:#666;font-size:12px;">${details.note}</em>`;
+                html += renderTop10Grid(details.top_10, scoreLabel);
+
+                if (details.models_used) {
+                    html += `<br><span style="color:#666;font-size:12px;">使用 ${details.models_used} 個模型</span>`;
+                }
+                return html;
+            }
+
+            return '<pre>' + JSON.stringify(details, null, 2) + '</pre>';
+        }
+
+        function renderTop10Grid(top10, scoreLabel) {
+            let html = '<div class="top10-grid">';
+            top10.forEach((item, i) => {
+                const num = item[0];
+                const score = item[1];
+                html += `<div class="top10-item">
+                    <div class="rank">#${i + 1}</div>
+                    <div class="num">${num}</div>
+                    <div class="score">${score} ${scoreLabel}</div>
+                </div>`;
+            });
+            html += '</div>';
+            return html;
         }
     </script>
 </body>

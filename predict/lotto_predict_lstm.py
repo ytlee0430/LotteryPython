@@ -82,6 +82,10 @@ def predict_lstm(df: pd.DataFrame, lottery_type='big'):
     latest = feats[-SEQ_LEN:][np.newaxis, ...]
     probs = model.predict(latest, verbose=0)[0]
 
+    # Get top 10 candidates with scores
+    top_indices = np.argsort(probs)[-10:][::-1]
+    top_10 = [[int(idx + 1), round(float(probs[idx]), 3)] for idx in top_indices]
+
     # Get top 6 main numbers
     top6 = np.argsort(probs)[-6:][::-1] + 1
     main_numbers = sorted(top6.tolist())
@@ -95,7 +99,11 @@ def predict_lstm(df: pd.DataFrame, lottery_type='big'):
     if special < 1 or special > max_special:
         special = int(np.random.randint(1, max_special + 1))
 
-    return main_numbers, special
+    details = {
+        "type": "probability_ranking",
+        "top_10": top_10
+    }
+    return main_numbers, special, details
 
 
 if __name__ == "__main__":

@@ -112,6 +112,10 @@ def predict_xgboost(df, today_index):
             prob_vec.append(0.0)
     prob_vec = np.array(prob_vec)
 
+    # Get top 10 candidates with scores
+    top_indices = np.argsort(prob_vec)[-10:][::-1]
+    top_10 = [[int(idx + 1), round(float(prob_vec[idx]), 3)] for idx in top_indices]
+
     # Get top 6 numbers
     nums = np.argsort(prob_vec)[-6:][::-1] + 1
     predicted_nums = nums.tolist()
@@ -119,7 +123,11 @@ def predict_xgboost(df, today_index):
     # Predict special number
     special = predict_special_xgboost(df, today_index, max_num, X)
 
-    return [int(n) for n in predicted_nums], int(special)
+    details = {
+        "type": "probability_ranking",
+        "top_10": top_10
+    }
+    return [int(n) for n in predicted_nums], int(special), details
 
 
 def predict_special_xgboost(df, today_index, max_num, X):

@@ -99,34 +99,37 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
     
     # Hot-50
     try:
-        main_nums, special = predict_hot50(df, today_index)
+        main_nums, special, details = predict_hot50(df, today_index)
         results["Hot-50"] = {
             "next_period": next_period,
             "numbers": sorted(main_nums),
-            "special": int(special)
+            "special": int(special),
+            "details": details
         }
     except Exception as e:
         results["Hot-50"] = {"error": str(e)}
 
     # Cold-50
     try:
-        nums_cold, sp_cold = predict_cold50(df, today_index, lottery_type=lottery_type)
+        nums_cold, sp_cold, details = predict_cold50(df, today_index, lottery_type=lottery_type)
         results["Cold-50"] = {
             "next_period": next_period,
             "numbers": sorted(nums_cold),
-            "special": int(sp_cold)
+            "special": int(sp_cold),
+            "details": details
         }
     except Exception as e:
         results["Cold-50"] = {"error": str(e)}
 
     # RF/GB/KNN
     try:
-        alg_results, sp_rf = predict_algorithms(df)
+        alg_results, sp_rf, alg_details = predict_algorithms(df)
         for name, nums in alg_results.items():
             results[name] = {
                 "next_period": next_period,
                 "numbers": sorted(nums),
-                "special": int(sp_rf)
+                "special": int(sp_rf),
+                "details": alg_details.get(name, {})
             }
     except Exception as e:
         results["RF_GB_KNN_Error"] = str(e)
@@ -134,55 +137,60 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
 
     # LSTM
     try:
-        nums_lstm, sp_lstm = predict_lstm(df, lottery_type=lottery_type)
+        nums_lstm, sp_lstm, details = predict_lstm(df, lottery_type=lottery_type)
         results["LSTM"] = {
             "next_period": next_period,
             "numbers": sorted(nums_lstm),
-            "special": int(sp_lstm)
+            "special": int(sp_lstm),
+            "details": details
         }
     except Exception as e:
         results["LSTM"] = {"error": str(e)}
 
     # LSTM-RF
     try:
-        nums_ai, sp_ai = predict_lstm_rf(df, lottery_type=lottery_type)
+        nums_ai, sp_ai, details = predict_lstm_rf(df, lottery_type=lottery_type)
         results["LSTM-RF"] = {
             "next_period": next_period,
             "numbers": sorted(nums_ai),
-            "special": int(sp_ai)
+            "special": int(sp_ai),
+            "details": details
         }
     except Exception as e:
         results["LSTM-RF"] = {"error": str(e)}
 
     # XGBoost
     try:
-        nums_xgb, sp_xgb = predict_xgboost(df, today_index)
+        nums_xgb, sp_xgb, details = predict_xgboost(df, today_index)
         results["XGBoost"] = {
             "next_period": next_period,
             "numbers": sorted(nums_xgb),
-            "special": int(sp_xgb)
+            "special": int(sp_xgb),
+            "details": details
         }
     except Exception as e:
         results["XGBoost"] = {"error": str(e)}
 
     # Markov Chain
     try:
-        nums_markov, sp_markov = predict_markov(df, today_index)
+        nums_markov, sp_markov, details = predict_markov(df, today_index)
         results["Markov"] = {
             "next_period": next_period,
             "numbers": sorted(nums_markov),
-            "special": int(sp_markov)
+            "special": int(sp_markov),
+            "details": details
         }
     except Exception as e:
         results["Markov"] = {"error": str(e)}
 
     # Pattern Analysis
     try:
-        nums_pattern, sp_pattern = predict_pattern(df, today_index)
+        nums_pattern, sp_pattern, details = predict_pattern(df, today_index)
         results["Pattern"] = {
             "next_period": next_period,
             "numbers": sorted(nums_pattern),
-            "special": int(sp_pattern)
+            "special": int(sp_pattern),
+            "details": details
         }
     except Exception as e:
         results["Pattern"] = {"error": str(e)}
@@ -215,11 +223,12 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
 
     # Ensemble Voting
     try:
-        nums_ensemble, sp_ensemble = predict_ensemble(df, today_index, previous_results=results)
+        nums_ensemble, sp_ensemble, details = predict_ensemble(df, today_index, previous_results=results)
         results["Ensemble"] = {
             "next_period": next_period,
             "numbers": sorted(nums_ensemble),
-            "special": int(sp_ensemble)
+            "special": int(sp_ensemble),
+            "details": details
         }
     except Exception as e:
         results["Ensemble"] = {"error": str(e)}

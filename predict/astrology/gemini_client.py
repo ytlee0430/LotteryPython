@@ -14,14 +14,28 @@ from typing import Optional
 class GeminiAstrologyClient:
     """Client for making astrology predictions via Gemini CLI."""
 
-    def __init__(self, timeout: int = 120):
+    # Available Gemini models
+    AVAILABLE_MODELS = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+    ]
+
+    # Default model
+    DEFAULT_MODEL = "gemini-2.0-flash"
+
+    def __init__(self, timeout: int = 120, model: str = None):
         """
         Initialize the Gemini client.
 
         Args:
             timeout: Maximum seconds to wait for Gemini response
+            model: Gemini model to use (default: gemini-2.0-flash)
         """
         self.timeout = timeout
+        self.model = model or self.DEFAULT_MODEL
         self.gemini_path = self._find_gemini()
 
     def _find_gemini(self) -> str:
@@ -43,8 +57,10 @@ class GeminiAstrologyClient:
             str: Gemini's response text
         """
         try:
+            # Build command with model flag
+            cmd = [self.gemini_path, "-m", self.model, prompt]
             result = subprocess.run(
-                [self.gemini_path, prompt],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout
@@ -54,6 +70,22 @@ class GeminiAstrologyClient:
             raise TimeoutError(f"Gemini CLI timed out after {self.timeout} seconds")
         except Exception as e:
             raise RuntimeError(f"Gemini CLI error: {e}")
+
+    def get_model(self) -> str:
+        """Get current model name."""
+        return self.model
+
+    def set_model(self, model: str):
+        """Set the Gemini model to use."""
+        if model in self.AVAILABLE_MODELS:
+            self.model = model
+        else:
+            raise ValueError(f"Invalid model: {model}. Available: {self.AVAILABLE_MODELS}")
+
+    @classmethod
+    def get_available_models(cls) -> list:
+        """Get list of available models."""
+        return cls.AVAILABLE_MODELS
 
     def _extract_json(self, text: str) -> dict:
         """
@@ -65,32 +97,65 @@ class GeminiAstrologyClient:
         Returns:
             dict: Parsed JSON data
         """
-        # Try to find JSON in the response
-        # Look for pattern like {"numbers": [...], "special": ...}
-        json_pattern = r'\{[^{}]*"numbers"[^{}]*\}'
-        match = re.search(json_pattern, text, re.DOTALL)
+        # Store original response for analysis extraction
+        original_text = text
 
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Try to parse the entire response as JSON
+        # Try to parse the entire response as JSON first
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
+
+        # Try to find JSON block in markdown code fence
+        code_block_pattern = r'```(?:json)?\s*(\{[\s\S]*?\})\s*```'
+        match = re.search(code_block_pattern, text)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find any JSON object with "numbers" key (balanced braces)
+        # Find the first { and try to parse from there
+        start = text.find('{')
+        if start != -1:
+            # Try progressively longer substrings
+            brace_count = 0
+            for i, char in enumerate(text[start:], start):
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        try:
+                            candidate = text[start:i+1]
+                            result = json.loads(candidate)
+                            if 'numbers' in result:
+                                return result
+                        except json.JSONDecodeError:
+                            pass
+                        break
 
         # Fallback: try to extract numbers from text
         numbers = re.findall(r'\b([1-4]?[0-9])\b', text)
         numbers = [int(n) for n in numbers if 1 <= int(n) <= 49]
 
         if len(numbers) >= 7:
+            # Try to extract analysis text from non-JSON part
+            analysis = ""
+            lines = original_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('{') and not line.startswith('['):
+                    if '分析' in line or '運勢' in line or '命盤' in line or '星座' in line:
+                        analysis = line[:100]
+                        break
+
             return {
                 "numbers": numbers[:6],
                 "special": numbers[6] if len(numbers) > 6 else numbers[0],
-                "raw_response": text[:200]
+                "analysis": analysis,
+                "raw_response": text[:500]
             }
 
         raise ValueError(f"Could not parse Gemini response: {text[:200]}")
@@ -131,8 +196,8 @@ class GeminiAstrologyClient:
 - 6 個主要號碼 (範圍 1-{max_num})
 - 1 個特別號 (範圍 1-{max_num})
 
-重要：請只回傳純 JSON 格式，不要有任何其他文字或解釋:
-{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "analysis": "簡短命理分析(30字內)"}}'''
+請回傳 JSON 格式，包含命理分析說明:
+{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "analysis": "根據命盤分析的完整說明，包含財運走勢和號碼選擇原因(50-100字)"}}'''
 
         response = self._call_gemini(prompt)
         result = self._extract_json(response)
@@ -173,8 +238,8 @@ class GeminiAstrologyClient:
 - 6 個主要號碼 (範圍 1-{max_num})
 - 1 個特別號 (範圍 1-{max_num})
 
-重要：請只回傳純 JSON 格式，不要有任何其他文字或解釋:
-{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "zodiac": "{zodiac}", "lucky_element": "幸運元素"}}'''
+請回傳 JSON 格式，包含星座分析說明:
+{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "zodiac": "{zodiac}", "lucky_element": "幸運元素", "analysis": "根據星座運勢的完整分析，包含本期財運和號碼選擇原因(50-100字)"}}'''
 
         response = self._call_gemini(prompt)
         result = self._extract_json(response)

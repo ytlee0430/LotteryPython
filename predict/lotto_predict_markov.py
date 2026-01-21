@@ -76,6 +76,10 @@ def predict_markov(df, today_index):
         if 1 <= num <= max_num:
             next_probs += trans_matrix[num - 1]
 
+    # Get top 10 candidates with scores
+    top_10_indices = np.argsort(next_probs)[-10:][::-1]
+    top_10 = [[int(i + 1), round(float(next_probs[i]), 3)] for i in top_10_indices]
+
     # Get top 6 numbers with highest transition probability
     top_indices = np.argsort(next_probs)[-6:][::-1]
     predicted_nums = [int(i + 1) for i in top_indices]
@@ -83,7 +87,11 @@ def predict_markov(df, today_index):
     # For special number, use separate transition analysis
     special = predict_special_markov(df, today_index, max_num)
 
-    return predicted_nums, special
+    details = {
+        "type": "transition_probability",
+        "top_10": top_10
+    }
+    return predicted_nums, special, details
 
 
 def predict_special_markov(df, today_index, max_num):

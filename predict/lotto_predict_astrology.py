@@ -27,12 +27,34 @@ def get_profile_manager() -> BirthProfileManager:
     return _profile_manager
 
 
-def get_gemini_client() -> GeminiAstrologyClient:
-    """Get or create the Gemini client singleton."""
+def get_gemini_client(model: str = None) -> GeminiAstrologyClient:
+    """Get or create the Gemini client singleton.
+
+    Args:
+        model: Optional model to use. If different from current, recreates client.
+    """
     global _gemini_client
     if _gemini_client is None:
-        _gemini_client = GeminiAstrologyClient()
+        _gemini_client = GeminiAstrologyClient(model=model)
+    elif model and _gemini_client.get_model() != model:
+        # Model changed, recreate client
+        _gemini_client = GeminiAstrologyClient(model=model)
     return _gemini_client
+
+
+def set_gemini_model(model: str):
+    """Set the Gemini model to use for predictions."""
+    global _gemini_client
+    if model in GeminiAstrologyClient.AVAILABLE_MODELS:
+        _gemini_client = GeminiAstrologyClient(model=model)
+        return True
+    return False
+
+
+def get_current_gemini_model() -> str:
+    """Get current Gemini model name."""
+    client = get_gemini_client()
+    return client.get_model()
 
 
 def get_cache_manager() -> PredictionCacheManager:
@@ -237,7 +259,8 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
                 "zodiac": result['zodiac'],
                 "numbers": result['numbers'],
                 "special": result['special'],
-                "lucky_element": result.get('lucky_element', '')
+                "lucky_element": result.get('lucky_element', ''),
+                "analysis": result.get('analysis', '')
             })
         except Exception as e:
             details["predictions"].append({

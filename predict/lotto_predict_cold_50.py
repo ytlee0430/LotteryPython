@@ -48,12 +48,20 @@ def predict_cold50(df, today_index, window=50, lottery_type='big'):
     # Take the 6 coldest numbers
     main = coldest[:6]
 
+    # Get top 10 coldest with their frequency (lower = colder)
+    top_10 = [[int(n), int(frequency.get(n, 0))] for n in coldest[:10]]
+
     # For special number, find the coldest special within valid range
     special_counts = Counter(train['Special'].values)
     all_specials = list(range(1, max_special + 1))
     coldest_special = min(all_specials, key=lambda x: special_counts.get(x, 0))
 
-    return [int(n) for n in main], int(coldest_special)
+    details = {
+        "type": "cold_frequency_ranking",
+        "top_10": top_10,
+        "note": "Lower frequency = colder number"
+    }
+    return [int(n) for n in main], int(coldest_special), details
 
 
 def get_cold_analysis(df, today_index, window=50):

@@ -7,15 +7,19 @@ from predict.lotto_predict_astrology import (
     add_profile, get_profile, get_all_profiles, delete_profile,
     predict_ziwei, predict_zodiac, has_profiles,
     get_profiles_by_family, get_all_family_groups,
-    get_cache_stats, clear_all_prediction_cache
+    get_cache_stats, clear_all_prediction_cache,
+    set_gemini_model as astrology_set_gemini_model,
+    get_current_gemini_model
 )
 from predict.astrology.profiles import AllPredictionsCacheManager, UserManager, User
+from predict.astrology.gemini_client import GeminiAstrologyClient
 import numpy as np
 import pandas as pd
 import json
 import os
 
 app = Flask(__name__)
+
 app.secret_key = os.environ.get('SECRET_KEY', 'lottery-python-secret-key-change-in-production')
 
 # Flask-Login setup
@@ -458,6 +462,37 @@ def clear_cache():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ============ Gemini Config APIs ============
+
+@app.route('/config/gemini', methods=['GET'])
+@login_required
+def get_gemini_config():
+    """Get current Gemini model configuration."""
+    return jsonify({
+        "model": get_current_gemini_model(),
+        "available_models": GeminiAstrologyClient.AVAILABLE_MODELS
+    })
+
+@app.route('/config/gemini', methods=['POST'])
+@login_required
+def set_gemini_config():
+    """Set Gemini model configuration."""
+    data = request.get_json()
+    if not data or 'model' not in data:
+        return jsonify({"error": "Missing 'model' field"}), 400
+
+    model = data['model']
+    if astrology_set_gemini_model(model):
+        return jsonify({
+            "message": f"Gemini model set to {model}",
+            "model": model
+        })
+    else:
+        return jsonify({
+            "error": f"Invalid model: {model}",
+            "available_models": GeminiAstrologyClient.AVAILABLE_MODELS
+        }), 400
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
