@@ -14,6 +14,10 @@ from predict.lotto_predict_astrology import (
 from predict.astrology.profiles import AllPredictionsCacheManager, UserManager, User
 from predict.astrology.gemini_client import GeminiAstrologyClient
 from predict.backtest import run_full_backtest, get_distribution_analysis
+from predict.config import (
+    get_config, update_config, reset_to_defaults,
+    update_weights_from_backtest
+)
 import numpy as np
 import pandas as pd
 import json
@@ -508,6 +512,81 @@ def distribution_analysis():
     try:
         results = get_distribution_analysis(lottery_type, periods)
         return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ Algorithm Config APIs ============
+
+@app.route('/config/algorithm', methods=['GET'])
+@login_required
+def get_algorithm_config():
+    """Get current algorithm configuration."""
+    return jsonify(get_config())
+
+@app.route('/config/algorithm', methods=['POST'])
+@login_required
+def set_algorithm_config():
+    """Update algorithm configuration.
+
+    Body:
+        hot_window: int (10-200)
+        cold_window: int (10-200)
+        ensemble_weights: dict of algorithm -> weight
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    try:
+        updated = update_config(data)
+        return jsonify({
+            "message": "Configuration updated",
+            "config": updated
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/config/algorithm/reset', methods=['POST'])
+@login_required
+def reset_algorithm_config():
+    """Reset algorithm configuration to defaults."""
+    try:
+        config = reset_to_defaults()
+        return jsonify({
+            "message": "Configuration reset to defaults",
+            "config": config
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/config/algorithm/auto-tune', methods=['POST'])
+@login_required
+def auto_tune_weights():
+    """Auto-tune ensemble weights based on backtest results.
+
+    Body:
+        type: 'big' or 'super' (default: 'big')
+        periods: backtest periods (default: 50)
+    """
+    data = request.get_json() or {}
+    lottery_type = data.get('type', 'big')
+    periods = int(data.get('periods', 50))
+
+    try:
+        # Run backtest
+        backtest_results = run_full_backtest(lottery_type, periods)
+
+        if 'error' in backtest_results:
+            return jsonify({"error": backtest_results['error']}), 500
+
+        # Update weights based on backtest
+        new_weights = update_weights_from_backtest(backtest_results)
+
+        return jsonify({
+            "message": "Weights auto-tuned based on backtest",
+            "backtest_summary": backtest_results.get('ranking', []),
+            "new_weights": new_weights
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

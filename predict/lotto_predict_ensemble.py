@@ -15,24 +15,12 @@ from predict.lotto_predict_lstm import predict_lstm
 from predict.lotto_predict_LSTMRF import predict_lstm_rf
 from predict.lotto_predict_markov import predict_markov
 from predict.lotto_predict_pattern import predict_pattern
+from predict.config import get_ensemble_weights, get_hot_window, get_cold_window
 
 
-# Default weights based on historical performance
-# RandomForest: 222 matches, KNN: 205, GradientBoosting: 203
-DEFAULT_WEIGHTS = {
-    "Hot-50": 1.0,
-    "Cold-50": 0.8,           # Complementary to Hot-50
-    "RandomForest": 1.5,      # Highest historical match rate
-    "GradientBoosting": 1.0,
-    "KNN": 1.2,
-    "XGBoost": 1.3,           # Enhanced gradient boosting
-    "LSTM": 1.0,
-    "LSTM-RF": 1.2,
-    "Markov": 1.0,            # Transition probability based
-    "Pattern": 0.9,           # Pattern matching
-    "Astrology-Ziwei": 0.8,   # 紫微斗數 prediction
-    "Astrology-Zodiac": 0.7,  # 西洋星座 prediction
-}
+def get_weights():
+    """Get current ensemble weights from config."""
+    return get_ensemble_weights()
 
 
 def collect_predictions(df, today_index, previous_results=None):
@@ -48,13 +36,14 @@ def collect_predictions(df, today_index, previous_results=None):
         list of dict: Each dict contains 'name', 'numbers', 'special', 'weight'
     """
     predictions = []
+    weights = get_weights()
 
     if previous_results:
         # Use provided results instead of recalculating
         for name, result in previous_results.items():
             if name == "Ensemble" or "error" in result:
                 continue
-            
+
             # Skip if result format is not as expected
             if "numbers" not in result or "special" not in result:
                 continue
@@ -63,32 +52,34 @@ def collect_predictions(df, today_index, previous_results=None):
                 "name": name,
                 "numbers": result["numbers"],
                 "special": result["special"],
-                "weight": DEFAULT_WEIGHTS.get(name, 1.0)
+                "weight": weights.get(name, 1.0)
             })
         return predictions
 
     # Fallback to calculating if no results provided
-    
+    hot_window = get_hot_window()
+    cold_window = get_cold_window()
+
     # Hot-50
     try:
-        main_nums, special, _ = predict_hot50(df, today_index)
+        main_nums, special, _ = predict_hot50(df, today_index, window=hot_window)
         predictions.append({
             "name": "Hot-50",
             "numbers": list(main_nums),
             "special": int(special),
-            "weight": DEFAULT_WEIGHTS.get("Hot-50", 1.0)
+            "weight": weights.get("Hot-50", 1.0)
         })
     except Exception:
         pass
 
     # Cold-50
     try:
-        nums_cold, sp_cold, _ = predict_cold50(df, today_index)
+        nums_cold, sp_cold, _ = predict_cold50(df, today_index, window=cold_window)
         predictions.append({
             "name": "Cold-50",
             "numbers": list(nums_cold),
             "special": int(sp_cold),
-            "weight": DEFAULT_WEIGHTS.get("Cold-50", 1.0)
+            "weight": weights.get("Cold-50", 1.0)
         })
     except Exception:
         pass
@@ -101,7 +92,7 @@ def collect_predictions(df, today_index, previous_results=None):
                 "name": name,
                 "numbers": list(nums),
                 "special": int(sp_rf),
-                "weight": DEFAULT_WEIGHTS.get(name, 1.0)
+                "weight": weights.get(name, 1.0)
             })
     except Exception:
         pass
@@ -113,7 +104,7 @@ def collect_predictions(df, today_index, previous_results=None):
             "name": "XGBoost",
             "numbers": list(nums_xgb),
             "special": int(sp_xgb),
-            "weight": DEFAULT_WEIGHTS.get("XGBoost", 1.0)
+            "weight": weights.get("XGBoost", 1.0)
         })
     except Exception:
         pass
@@ -125,7 +116,7 @@ def collect_predictions(df, today_index, previous_results=None):
             "name": "LSTM",
             "numbers": list(nums_lstm),
             "special": int(sp_lstm),
-            "weight": DEFAULT_WEIGHTS.get("LSTM", 1.0)
+            "weight": weights.get("LSTM", 1.0)
         })
     except Exception:
         pass
@@ -137,7 +128,7 @@ def collect_predictions(df, today_index, previous_results=None):
             "name": "LSTM-RF",
             "numbers": list(nums_ai),
             "special": int(sp_ai),
-            "weight": DEFAULT_WEIGHTS.get("LSTM-RF", 1.0)
+            "weight": weights.get("LSTM-RF", 1.0)
         })
     except Exception:
         pass
@@ -149,7 +140,7 @@ def collect_predictions(df, today_index, previous_results=None):
             "name": "Markov",
             "numbers": list(nums_markov),
             "special": int(sp_markov),
-            "weight": DEFAULT_WEIGHTS.get("Markov", 1.0)
+            "weight": weights.get("Markov", 1.0)
         })
     except Exception:
         pass
@@ -161,7 +152,7 @@ def collect_predictions(df, today_index, previous_results=None):
             "name": "Pattern",
             "numbers": list(nums_pattern),
             "special": int(sp_pattern),
-            "weight": DEFAULT_WEIGHTS.get("Pattern", 1.0)
+            "weight": weights.get("Pattern", 1.0)
         })
     except Exception:
         pass
@@ -218,22 +209,19 @@ def weighted_vote_special(predictions):
     return vote_counter.most_common(1)[0][0]
 
 
-def predict_ensemble(df, today_index, weights=None, previous_results=None):
+def predict_ensemble(df, today_index, previous_results=None):
     """
     Main ensemble voting prediction function.
 
     Args:
         df: DataFrame with historical lottery data
         today_index: Current index for prediction
-        weights: Optional custom weights dict (model_name -> weight)
         previous_results: Optional dict containing already calculated results
 
     Returns:
-        tuple: (main_numbers, special_number)
+        tuple: (main_numbers, special_number, details)
     """
-    # Update weights if custom weights provided
-    if weights:
-        DEFAULT_WEIGHTS.update(weights)
+    # Weights are loaded from config via get_weights() in collect_predictions
 
     # Collect all predictions
     predictions = collect_predictions(df, today_index, previous_results)

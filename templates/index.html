@@ -246,6 +246,55 @@
         .number-item .rank { font-size: 0.75em; color: #666; }
         .number-item .num { font-size: 1.4em; font-weight: bold; color: #333; }
         .number-item .count { font-size: 0.8em; color: #888; }
+
+        /* Settings panel */
+        .settings-toggle {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .settings-toggle:hover { background: #5a6268; }
+        .settings-panel {
+            display: none;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+        .settings-panel.show { display: block; }
+        .settings-panel h3 { margin-top: 0; color: #333; }
+        .settings-group {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .settings-group:last-child { border-bottom: none; }
+        .settings-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .settings-group input[type="number"] {
+            width: 80px;
+            padding: 5px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+        }
+        .settings-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .settings-btn:hover { background: #218838; }
+        .settings-btn.secondary { background: #6c757d; }
+        .settings-btn.secondary:hover { background: #5a6268; }
+        .settings-btn.danger { background: #dc3545; }
+        .settings-btn.danger:hover { background: #c82333; }
     </style>
 </head>
 <body>
@@ -296,9 +345,41 @@
 
         <div class="control-group" style="justify-content: flex-end;">
             <button onclick="runAction()" id="runBtn">Run</button>
+            <button class="settings-toggle" onclick="toggleSettings()">⚙️ 參數設定</button>
         </div>
     </div>
-    
+
+    <div id="settingsPanel" class="settings-panel">
+        <h3>⚙️ 算法參數設定</h3>
+
+        <div class="settings-group">
+            <label>Hot/Cold 分析期數</label>
+            <div style="display: flex; gap: 20px; align-items: center;">
+                <div>
+                    <span>Hot 期數:</span>
+                    <input type="number" id="hotWindow" min="10" max="200" value="50">
+                </div>
+                <div>
+                    <span>Cold 期數:</span>
+                    <input type="number" id="coldWindow" min="10" max="200" value="50">
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <label>Ensemble 權重 (影響投票計算)</label>
+            <div id="weightsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <div style="margin-top: 15px;">
+            <button class="settings-btn" onclick="saveSettings()">💾 儲存設定</button>
+            <button class="settings-btn secondary" onclick="autoTuneWeights()">🔧 自動調權重</button>
+            <button class="settings-btn danger" onclick="resetSettings()">🔄 重設預設</button>
+        </div>
+    </div>
+
     <div id="status"></div>
     <div id="results"></div>
 
@@ -332,6 +413,118 @@
                 }
             } catch (e) {
                 console.error('Failed to update Gemini model:', e);
+            }
+        }
+
+        // ============ Algorithm Settings Functions ============
+
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            panel.classList.toggle('show');
+            if (panel.classList.contains('show')) {
+                loadAlgorithmConfig();
+            }
+        }
+
+        async function loadAlgorithmConfig() {
+            try {
+                const response = await fetch('/config/algorithm');
+                const config = await response.json();
+
+                document.getElementById('hotWindow').value = config.hot_window || 50;
+                document.getElementById('coldWindow').value = config.cold_window || 50;
+
+                // Render weights
+                const container = document.getElementById('weightsContainer');
+                const weights = config.ensemble_weights || {};
+                container.innerHTML = '';
+
+                for (const [algo, weight] of Object.entries(weights)) {
+                    container.innerHTML += `
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <span style="flex: 1; font-size: 0.85em;">${algo}:</span>
+                            <input type="number" class="weight-input" data-algo="${algo}"
+                                   value="${weight}" min="0" max="5" step="0.1"
+                                   style="width: 60px; padding: 3px 6px; border: 1px solid #ced4da; border-radius: 4px;">
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error('Failed to load algorithm config:', e);
+            }
+        }
+
+        async function saveSettings() {
+            const hotWindow = parseInt(document.getElementById('hotWindow').value);
+            const coldWindow = parseInt(document.getElementById('coldWindow').value);
+
+            // Collect weights
+            const weights = {};
+            document.querySelectorAll('.weight-input').forEach(input => {
+                weights[input.dataset.algo] = parseFloat(input.value);
+            });
+
+            try {
+                const response = await fetch('/config/algorithm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        hot_window: hotWindow,
+                        cold_window: coldWindow,
+                        ensemble_weights: weights
+                    })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('儲存失敗: ' + data.error);
+                } else {
+                    alert('設定已儲存！');
+                }
+            } catch (e) {
+                alert('儲存失敗: ' + e.message);
+            }
+        }
+
+        async function autoTuneWeights() {
+            if (!confirm('根據回測結果自動調整權重？\n這將執行回測並更新 Ensemble 權重。')) {
+                return;
+            }
+
+            const type = document.getElementById('type').value;
+            try {
+                const response = await fetch('/config/algorithm/auto-tune', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: type, periods: 50 })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('自動調整失敗: ' + data.error);
+                } else {
+                    alert('權重已根據回測結果更新！');
+                    loadAlgorithmConfig();  // Refresh display
+                }
+            } catch (e) {
+                alert('自動調整失敗: ' + e.message);
+            }
+        }
+
+        async function resetSettings() {
+            if (!confirm('確定要重設所有參數為預設值嗎？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/config/algorithm/reset', { method: 'POST' });
+                const data = await response.json();
+                if (data.error) {
+                    alert('重設失敗: ' + data.error);
+                } else {
+                    alert('已重設為預設值！');
+                    loadAlgorithmConfig();  // Refresh display
+                }
+            } catch (e) {
+                alert('重設失敗: ' + e.message);
             }
         }
 
