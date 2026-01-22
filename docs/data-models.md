@@ -169,7 +169,52 @@ print(df.head())
   "RandomForest": {
     "next_period": "113123",
     "numbers": [9, 24, 32, 40, 41, 49],
-    "special": 27
+    "special": 27,
+    "from_cache": false,
+    "draw_info": {
+      "period": "113123",
+      "draw_date": "2025-01-21",
+      "weekday": "週二",
+      "lottery_name": "大樂透",
+      "draw_schedule": "週二、週五",
+      "display": "第 113123 期 | 2025-01-21 (週二)"
+    }
+  }
+}
+```
+
+### 命理預測結果 JSON（含幸運指南與組合說明）
+```json
+{
+  "Astrology-Ziwei": {
+    "next_period": "113123",
+    "numbers": [4, 9, 12, 15, 23, 41],
+    "special": 9,
+    "from_cache": true,
+    "draw_info": { ... },
+    "details": [
+      {
+        "name": "王小明",
+        "numbers": [4, 9, 12, 23, 35, 41],
+        "special": 9,
+        "analysis": "根據命盤分析...",
+        "lucky_guidance": {
+          "lucky_time": "下午3-5點",
+          "lucky_color": "紅色",
+          "lucky_direction": "東南方",
+          "lucky_item": "紅色錢包"
+        }
+      }
+    ],
+    "combination_reason": {
+      "method": "頻率投票法",
+      "description": "綜合 4 位家人的命理分析，選出最多人推薦的號碼",
+      "numbers": [
+        {"number": 4, "count": 4, "reason": "全員推薦"},
+        {"number": 9, "count": 3, "reason": "3/4 人推薦"}
+      ],
+      "special": {"number": 9, "count": 2, "reason": "2/4 人推薦"}
+    }
   }
 }
 ```

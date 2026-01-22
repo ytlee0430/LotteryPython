@@ -11,6 +11,7 @@ import re
 
 from predict.astrology.profiles import BirthProfileManager, PredictionCacheManager
 from predict.astrology.gemini_client import GeminiAstrologyClient
+from lotterypython.utils import get_next_draw_date
 
 
 # Singleton instances
@@ -142,6 +143,9 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
     # Get profile IDs for cache key
     profile_ids = [p['id'] for p in profiles]
 
+    # Get draw date for this period
+    draw_date, _ = get_next_draw_date(lottery_type)
+
     # Check cache first
     cached = cache.get_cached_prediction(lottery_type, period, 'ziwei', profile_ids, user_id)
     if cached:
@@ -156,14 +160,16 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
 
     for profile in profiles:
         try:
-            result = client.predict_ziwei(profile, lottery_type)
+            result = client.predict_ziwei(profile, lottery_type,
+                                          period=str(period), draw_date=draw_date)
             all_numbers.extend(result['numbers'])
             all_specials.append(result['special'])
             details["predictions"].append({
                 "name": profile['name'],
                 "numbers": result['numbers'],
                 "special": result['special'],
-                "analysis": result.get('analysis', '')
+                "analysis": result.get('analysis', ''),
+                "lucky_guidance": result.get('lucky_guidance', {})
             })
         except Exception as e:
             details["predictions"].append({
@@ -237,6 +243,9 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
     # Get profile IDs for cache key
     profile_ids = [p['id'] for p in profiles]
 
+    # Get draw date for this period
+    draw_date, _ = get_next_draw_date(lottery_type)
+
     # Check cache first
     cached = cache.get_cached_prediction(lottery_type, period, 'zodiac', profile_ids, user_id)
     if cached:
@@ -251,7 +260,8 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
 
     for profile in profiles:
         try:
-            result = client.predict_zodiac(profile, lottery_type)
+            result = client.predict_zodiac(profile, lottery_type,
+                                           period=str(period), draw_date=draw_date)
             all_numbers.extend(result['numbers'])
             all_specials.append(result['special'])
             details["predictions"].append({
@@ -260,7 +270,8 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
                 "numbers": result['numbers'],
                 "special": result['special'],
                 "lucky_element": result.get('lucky_element', ''),
-                "analysis": result.get('analysis', '')
+                "analysis": result.get('analysis', ''),
+                "lucky_guidance": result.get('lucky_guidance', {})
             })
         except Exception as e:
             details["predictions"].append({

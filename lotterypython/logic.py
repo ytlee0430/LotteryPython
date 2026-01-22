@@ -16,6 +16,7 @@ from predict.lotto_predict_ensemble import predict_ensemble
 from predict.lotto_predict_astrology import predict_ziwei, predict_zodiac, has_profiles
 from predict import lotto_predict_radom
 from predict.astrology.profiles import AllPredictionsCacheManager
+from lotterypython.utils import get_draw_info, format_combination_reason
 
 # Singleton cache manager
 _all_cache_manager = None
@@ -84,15 +85,19 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
     max_num = int(df[['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth']].max().max())
     lottery_type = 'big' if max_num > 38 else 'super'
 
+    # Get draw info for display
+    draw_info = get_draw_info(lottery_type, next_period)
+
     # Check cache first
     if use_cache and next_period:
         cache_manager = get_all_cache_manager()
         cached = cache_manager.get_cached_predictions(lottery_type, next_period, user_id)
         if cached:
-            # Add from_cache flag to each result
+            # Add from_cache flag and draw_info to each result
             for key in cached:
                 if isinstance(cached[key], dict) and 'error' not in cached[key]:
                     cached[key]['from_cache'] = True
+                    cached[key]['draw_info'] = draw_info
             return cached
 
     results = {}
@@ -200,11 +205,14 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
         # Astrology-Ziwei (紫微斗數)
         try:
             nums_ziwei, sp_ziwei, details_ziwei = predict_ziwei(lottery_type, user_id=user_id)
+            predictions_ziwei = details_ziwei.get("predictions", [])
+            combination_ziwei = format_combination_reason(predictions_ziwei, sorted(nums_ziwei), int(sp_ziwei))
             results["Astrology-Ziwei"] = {
                 "next_period": next_period,
                 "numbers": sorted(nums_ziwei),
                 "special": int(sp_ziwei),
-                "details": details_ziwei.get("predictions", [])
+                "details": predictions_ziwei,
+                "combination_reason": combination_ziwei
             }
         except Exception as e:
             results["Astrology-Ziwei"] = {"error": str(e)}
@@ -212,11 +220,14 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
         # Astrology-Zodiac (西洋星座)
         try:
             nums_zodiac, sp_zodiac, details_zodiac = predict_zodiac(lottery_type, user_id=user_id)
+            predictions_zodiac = details_zodiac.get("predictions", [])
+            combination_zodiac = format_combination_reason(predictions_zodiac, sorted(nums_zodiac), int(sp_zodiac))
             results["Astrology-Zodiac"] = {
                 "next_period": next_period,
                 "numbers": sorted(nums_zodiac),
                 "special": int(sp_zodiac),
-                "details": details_zodiac.get("predictions", [])
+                "details": predictions_zodiac,
+                "combination_reason": combination_zodiac
             }
         except Exception as e:
             results["Astrology-Zodiac"] = {"error": str(e)}
@@ -233,10 +244,11 @@ def run_predictions(df: pd.DataFrame, use_cache: bool = True, user_id: int = Non
     except Exception as e:
         results["Ensemble"] = {"error": str(e)}
 
-    # Add from_cache=False to all fresh results
+    # Add from_cache=False and draw_info to all fresh results
     for key in results:
         if isinstance(results[key], dict) and 'error' not in results[key]:
             results[key]['from_cache'] = False
+            results[key]['draw_info'] = draw_info
 
     # Save to cache
     if use_cache and next_period:

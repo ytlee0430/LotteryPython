@@ -8,6 +8,7 @@ based on Chinese (紫微斗數) and Western (星座) astrology.
 import subprocess
 import json
 import re
+import time
 from typing import Optional
 
 
@@ -26,16 +27,21 @@ class GeminiAstrologyClient:
     # Default model
     DEFAULT_MODEL = "gemini-2.0-flash"
 
-    def __init__(self, timeout: int = 120, model: str = None):
+    def __init__(self, timeout: int = 180, model: str = None,
+                 max_retries: int = 3, retry_delay: int = 3):
         """
         Initialize the Gemini client.
 
         Args:
             timeout: Maximum seconds to wait for Gemini response
             model: Gemini model to use (default: gemini-2.0-flash)
+            max_retries: Maximum number of retry attempts on parse failure
+            retry_delay: Seconds to wait between retries
         """
         self.timeout = timeout
         self.model = model or self.DEFAULT_MODEL
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self.gemini_path = self._find_gemini()
 
     def _find_gemini(self) -> str:
@@ -160,18 +166,22 @@ class GeminiAstrologyClient:
 
         raise ValueError(f"Could not parse Gemini response: {text[:200]}")
 
-    def predict_ziwei(self, profile: dict, lottery_type: str = 'big') -> dict:
+    def predict_ziwei(self, profile: dict, lottery_type: str = 'big',
+                       period: str = None, draw_date: str = None) -> dict:
         """
         Get lottery predictions using 紫微斗數 (Purple Star Astrology).
 
         Args:
             profile: Birth profile dict with name, birth_year, birth_month, birth_day, birth_hour
             lottery_type: 'big' for 大樂透 (1-49) or 'super' for 威力彩 (1-38)
+            period: Lottery period number (e.g. "114000001")
+            draw_date: Draw date string (e.g. "2025-01-21")
 
         Returns:
             dict: Prediction with numbers, special, and analysis
         """
         max_num = 49 if lottery_type == 'big' else 38
+        max_special = 49 if lottery_type == 'big' else 8  # 威力彩特別號只有 1-8
         lottery_name = "大樂透" if lottery_type == 'big' else "威力彩"
 
         # Convert hour to Chinese time period
@@ -183,8 +193,13 @@ class GeminiAstrologyClient:
         hour_index = ((profile['birth_hour'] + 1) % 24) // 2
         chinese_hour = hour_periods[hour_index]
 
-        prompt = f'''你是一位精通紫微斗數的命理大師。請根據以下生辰資料進行命盤分析，並推薦最適合購買{lottery_name}的號碼。
+        # 開獎資訊
+        draw_info = ""
+        if period or draw_date:
+            draw_info = f"\n開獎資訊:\n- 期數: 第 {period} 期\n- 開獎日期: {draw_date}\n"
 
+        prompt = f'''你是一位精通紫微斗數的命理大師。請根據以下生辰資料進行命盤分析，並推薦最適合購買{lottery_name}的號碼。
+{draw_info}
 生辰資料:
 - 姓名: {profile['name']}
 - 國曆出生年: {profile['birth_year']}年
@@ -194,41 +209,61 @@ class GeminiAstrologyClient:
 
 請根據此人的紫微命盤特質（如命宮、財帛宮、遷移宮等），分析其財運走勢，並推薦:
 - 6 個主要號碼 (範圍 1-{max_num})
-- 1 個特別號 (範圍 1-{max_num})
+- 1 個特別號 (範圍 1-{max_special})
+- 購買樂透的幸運指南（幸運時間、顏色、方位、物品）
 
 請回傳 JSON 格式，包含命理分析說明:
-{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "analysis": "根據命盤分析的完整說明，包含財運走勢和號碼選擇原因(50-100字)"}}'''
+{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "analysis": "根據命盤分析的完整說明，包含財運走勢和號碼選擇原因(50-100字)", "lucky_guidance": {{"lucky_time": "下午3-5點", "lucky_color": "紅色", "lucky_direction": "東南方", "lucky_item": "紅色錢包"}}}}'''
 
-        response = self._call_gemini(prompt)
-        result = self._extract_json(response)
+        # Retry mechanism for parsing failures
+        last_error = None
+        for attempt in range(self.max_retries):
+            try:
+                response = self._call_gemini(prompt)
+                result = self._extract_json(response)
 
-        # Validate and fix numbers
-        result['numbers'] = self._validate_numbers(result.get('numbers', []), max_num, 6)
-        result['special'] = self._validate_number(result.get('special', 1), max_num)
-        result['method'] = '紫微斗數'
-        result['profile_name'] = profile['name']
+                # Validate and fix numbers
+                result['numbers'] = self._validate_numbers(result.get('numbers', []), max_num, 6)
+                result['special'] = self._validate_number(result.get('special', 1), max_special)
+                result['method'] = '紫微斗數'
+                result['profile_name'] = profile['name']
 
-        return result
+                return result
+            except ValueError as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                    continue
+                raise ValueError(f"紫微斗數預測失敗 (已重試 {self.max_retries} 次): {last_error}")
 
-    def predict_zodiac(self, profile: dict, lottery_type: str = 'big') -> dict:
+    def predict_zodiac(self, profile: dict, lottery_type: str = 'big',
+                        period: str = None, draw_date: str = None) -> dict:
         """
         Get lottery predictions using Western Zodiac astrology.
 
         Args:
             profile: Birth profile dict with name, birth_year, birth_month, birth_day
             lottery_type: 'big' for 大樂透 (1-49) or 'super' for 威力彩 (1-38)
+            period: Lottery period number (e.g. "114000001")
+            draw_date: Draw date string (e.g. "2025-01-21")
 
         Returns:
             dict: Prediction with numbers, special, zodiac sign, and lucky elements
         """
         max_num = 49 if lottery_type == 'big' else 38
+        max_special = 49 if lottery_type == 'big' else 8  # 威力彩特別號只有 1-8
         lottery_name = "大樂透" if lottery_type == 'big' else "威力彩"
 
         # Calculate zodiac sign
         zodiac = self._get_zodiac_sign(profile['birth_month'], profile['birth_day'])
 
-        prompt = f'''你是一位專業的西洋占星術師。請根據以下星座資料分析運勢，並推薦最適合購買{lottery_name}的號碼。
+        # 開獎資訊
+        draw_info = ""
+        if period or draw_date:
+            draw_info = f"\n開獎資訊:\n- 期數: 第 {period} 期\n- 開獎日期: {draw_date}\n"
 
+        prompt = f'''你是一位專業的西洋占星術師。請根據以下星座資料分析運勢，並推薦最適合購買{lottery_name}的號碼。
+{draw_info}
 個人資料:
 - 姓名: {profile['name']}
 - 星座: {zodiac}
@@ -236,22 +271,33 @@ class GeminiAstrologyClient:
 
 請根據此星座的特質、幸運數字、本週運勢等，推薦:
 - 6 個主要號碼 (範圍 1-{max_num})
-- 1 個特別號 (範圍 1-{max_num})
+- 1 個特別號 (範圍 1-{max_special})
+- 購買樂透的幸運指南（幸運時間、顏色、方位、物品）
 
 請回傳 JSON 格式，包含星座分析說明:
-{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "zodiac": "{zodiac}", "lucky_element": "幸運元素", "analysis": "根據星座運勢的完整分析，包含本期財運和號碼選擇原因(50-100字)"}}'''
+{{"numbers": [1, 2, 3, 4, 5, 6], "special": 7, "zodiac": "{zodiac}", "lucky_element": "幸運元素", "analysis": "根據星座運勢的完整分析，包含本期財運和號碼選擇原因(50-100字)", "lucky_guidance": {{"lucky_time": "下午3-5點", "lucky_color": "紅色", "lucky_direction": "東南方", "lucky_item": "紅色錢包"}}}}'''
 
-        response = self._call_gemini(prompt)
-        result = self._extract_json(response)
+        # Retry mechanism for parsing failures
+        last_error = None
+        for attempt in range(self.max_retries):
+            try:
+                response = self._call_gemini(prompt)
+                result = self._extract_json(response)
 
-        # Validate and fix numbers
-        result['numbers'] = self._validate_numbers(result.get('numbers', []), max_num, 6)
-        result['special'] = self._validate_number(result.get('special', 1), max_num)
-        result['zodiac'] = zodiac
-        result['method'] = '西洋星座'
-        result['profile_name'] = profile['name']
+                # Validate and fix numbers
+                result['numbers'] = self._validate_numbers(result.get('numbers', []), max_num, 6)
+                result['special'] = self._validate_number(result.get('special', 1), max_special)
+                result['zodiac'] = zodiac
+                result['method'] = '西洋星座'
+                result['profile_name'] = profile['name']
 
-        return result
+                return result
+            except ValueError as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                    continue
+                raise ValueError(f"西洋星座預測失敗 (已重試 {self.max_retries} 次): {last_error}")
 
     def _get_zodiac_sign(self, month: int, day: int) -> str:
         """Get Western zodiac sign from birth date."""

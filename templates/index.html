@@ -59,6 +59,96 @@
         .astrology-text { background: #f3e8ff; padding: 12px; border-radius: 8px; border-left: 4px solid #6f42c1; white-space: pre-wrap; line-height: 1.6; }
         .pattern-info { background: #e8f4fd; padding: 12px; border-radius: 8px; border-left: 4px solid #0d6efd; }
         .pattern-info span { display: inline-block; margin-right: 15px; }
+
+        /* Draw info banner */
+        .draw-info-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+        }
+        .draw-info-banner .period { font-size: 1.3em; font-weight: bold; }
+        .draw-info-banner .date { font-size: 1.1em; opacity: 0.9; }
+        .draw-info-banner .schedule { font-size: 0.9em; opacity: 0.7; }
+
+        /* Lucky guidance styles */
+        .lucky-guidance {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .lucky-item { display: flex; align-items: center; gap: 5px; }
+        .lucky-item .icon { font-size: 1.2em; }
+        .lucky-item .label { font-size: 0.85em; color: #666; }
+        .lucky-item .value { font-weight: bold; color: #333; }
+
+        /* Combination reason styles */
+        .combination-reason {
+            background: #e8f5e9;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border-left: 4px solid #4caf50;
+        }
+        .combination-reason .title { font-weight: bold; color: #2e7d32; margin-bottom: 8px; }
+        .combination-reason .method { font-size: 0.9em; color: #666; margin-bottom: 8px; }
+        .number-votes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .number-vote {
+            background: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .number-vote.high-vote { background: #c8e6c9; }
+        .number-vote .num { font-weight: bold; margin-right: 5px; }
+        .number-vote .vote { color: #666; font-size: 0.85em; }
+
+        /* Astrology cache control */
+        .astrology-cache-control {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .astrology-cache-control .cache-status {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .clear-cache-btn {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a5a);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+        .clear-cache-btn:hover {
+            background: linear-gradient(135deg, #ff5252, #e53935);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        }
+        .clear-cache-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
     </style>
 </head>
 <body>
@@ -86,8 +176,8 @@
         <div class="control-group">
             <label for="action">Action</label>
             <select id="action">
-                <option value="predict/astrology">Astrology (命理預測) ⚡</option>
                 <option value="predict">All Algorithms (全部算法)</option>
+                <option value="predict/astrology">Astrology (命理預測) ⚡</option>
                 <option value="update">Update Data (更新資料)</option>
                 <option value="combin">Combin (預測並存檔)</option>
                 <option value="history">History (歷史資料)</option>
@@ -223,6 +313,24 @@
                     const hasCache = Object.values(displayData).some(val => val && val.from_cache !== undefined);
                     const hasDetails = Object.values(displayData).some(val => val && val.details);
 
+                    // Render draw info banner if available
+                    const firstResult = Object.values(displayData).find(val => val && val.draw_info);
+                    if (firstResult && firstResult.draw_info) {
+                        const di = firstResult.draw_info;
+                        resultsDiv.innerHTML += `
+                            <div class="draw-info-banner">
+                                <div>
+                                    <div class="period">🎰 ${di.lottery_name} 第 ${di.period} 期</div>
+                                    <div class="schedule">開獎日：${di.draw_schedule}</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div class="date">📅 ${di.draw_date}</div>
+                                    <div class="schedule">${di.weekday}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+
                     let tableHtml = `
                         <table id="predictionTable">
                             <thead>
@@ -278,7 +386,7 @@
                             const colSpan = 4 + (hasCache ? 1 : 0) + (hasDetails ? 1 : 0);
                             tableHtml += `<tr class="details-row" id="details-${rowIndex}">
                                 <td colspan="${colSpan}" class="details-cell">
-                                    <div class="details-content">${renderDetails(algo, result.details)}</div>
+                                    <div class="details-content">${renderDetails(algo, result.details, result)}</div>
                                 </td>
                             </tr>`;
                         }
@@ -384,7 +492,36 @@
             }
         }
 
-        function renderDetails(algo, details) {
+        async function clearAstrologyCache() {
+            if (!confirm('確定要清除命理分析的快取嗎？\n清除後下次預測將重新計算。')) {
+                return;
+            }
+
+            const btn = document.querySelector('.clear-cache-btn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '清除中...';
+
+            try {
+                const response = await fetch('/cache/clear-astrology', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('清除失敗: ' + data.error);
+                } else {
+                    alert(data.message || '命理快取已清除');
+                    // Refresh the page to show fresh state
+                    location.reload();
+                }
+            } catch (error) {
+                alert('清除失敗: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        function renderDetails(algo, details, result) {
             if (!details) return '-';
 
             // Astrology algorithms - show analysis text
@@ -394,20 +531,66 @@
                     let html = '<div class="astrology-text">';
                     html += '<strong>🔮 命理分析：</strong><br><br>';
                     details.forEach((pred, i) => {
-                        const analysis = pred.analysis || pred.explanation || '';
                         const name = pred.name || pred.profile_name || '分析 ' + (i+1);
                         html += `<strong>${name}`;
                         if (pred.zodiac) html += ` (${pred.zodiac})`;
                         html += `:</strong><br>`;
+
+                        // Check for errors
+                        if (pred.error) {
+                            html += `<span style="color: #dc3545;">❌ 預測失敗: ${pred.error}</span><br><br>`;
+                            return;
+                        }
+
+                        const analysis = pred.analysis || pred.explanation || '';
                         if (analysis) {
                             html += analysis + '<br>';
                         }
                         if (pred.lucky_element) {
                             html += `<em>幸運元素: ${pred.lucky_element}</em><br>`;
                         }
-                        html += `號碼: ${pred.numbers?.join(', ') || '-'} + ${pred.special || '-'}<br><br>`;
+                        html += `號碼: ${pred.numbers?.join(', ') || '-'} + ${pred.special || '-'}<br>`;
+
+                        // Lucky guidance
+                        if (pred.lucky_guidance && Object.keys(pred.lucky_guidance).length > 0) {
+                            const lg = pred.lucky_guidance;
+                            html += `<div class="lucky-guidance">`;
+                            if (lg.lucky_time) html += `<div class="lucky-item"><span class="icon">🕐</span><span class="label">幸運時間:</span><span class="value">${lg.lucky_time}</span></div>`;
+                            if (lg.lucky_color) html += `<div class="lucky-item"><span class="icon">🎨</span><span class="label">幸運顏色:</span><span class="value">${lg.lucky_color}</span></div>`;
+                            if (lg.lucky_direction) html += `<div class="lucky-item"><span class="icon">🧭</span><span class="label">幸運方位:</span><span class="value">${lg.lucky_direction}</span></div>`;
+                            if (lg.lucky_item) html += `<div class="lucky-item"><span class="icon">🍀</span><span class="label">幸運物品:</span><span class="value">${lg.lucky_item}</span></div>`;
+                            html += `</div>`;
+                        }
+                        html += '<br>';
                     });
                     html += '</div>';
+
+                    // Combination reason
+                    if (result && result.combination_reason) {
+                        const cr = result.combination_reason;
+                        html += `<div class="combination-reason">`;
+                        html += `<div class="title">📊 號碼組合說明</div>`;
+                        html += `<div class="method">${cr.description}</div>`;
+                        html += `<div class="number-votes">`;
+                        if (cr.numbers) {
+                            cr.numbers.forEach(n => {
+                                const highVote = n.count > 1 ? 'high-vote' : '';
+                                html += `<div class="number-vote ${highVote}"><span class="num">${n.number}</span><span class="vote">${n.reason}</span></div>`;
+                            });
+                        }
+                        if (cr.special) {
+                            html += `<div class="number-vote" style="background:#ffe0e0;"><span class="num">特 ${cr.special.number}</span><span class="vote">${cr.special.reason}</span></div>`;
+                        }
+                        html += `</div></div>`;
+                    }
+
+                    // Cache info and clear button for astrology
+                    const cacheStatus = result && result.from_cache ? '⚡ 快取' : '🔄 最新';
+                    html += `<div class="astrology-cache-control">`;
+                    html += `<span class="cache-status">${cacheStatus}</span>`;
+                    html += `<button class="clear-cache-btn" onclick="clearAstrologyCache()">🗑️ 清除命理快取</button>`;
+                    html += `</div>`;
+
                     return html;
                 }
                 return '<div class="astrology-text">' + JSON.stringify(details) + '</div>';

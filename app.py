@@ -449,16 +449,15 @@ def cache_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/cache/clear', methods=['POST'])
+@app.route('/cache/clear-astrology', methods=['POST'])
 @login_required
-def clear_cache():
-    """Clear all prediction cache for current user."""
+def clear_astrology_cache():
+    """Clear only astrology prediction cache for current user (紫微斗數 + 西洋星座)."""
     try:
         astrology_count = clear_all_prediction_cache(user_id=current_user.id)
-        all_cache = AllPredictionsCacheManager()
-        all_count = all_cache.clear_all_cache(user_id=current_user.id)
         return jsonify({
-            "message": f"Cleared {astrology_count} astrology + {all_count} all-predictions cached entries"
+            "message": f"已清除 {astrology_count} 筆命理分析快取",
+            "cleared_count": astrology_count
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

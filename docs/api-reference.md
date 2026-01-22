@@ -488,6 +488,37 @@ fetch('/predict', {
 | numbers | array[int] | 6 個預測號碼（已排序）|
 | special | int | 特別號預測 |
 | from_cache | boolean | 是否來自快取 |
+| draw_info | object | 開獎資訊（見下方）|
+| combination_reason | object | 號碼組合說明（命理預測專用）|
+
+### draw_info 物件
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| period | string | 下一期期數 |
+| draw_date | string | 開獎日期 (YYYY-MM-DD) |
+| weekday | string | 開獎星期 (週一～週日) |
+| lottery_name | string | 彩種名稱 (大樂透/威力彩) |
+| draw_schedule | string | 開獎時程 (週二、週五 或 週一、週四) |
+| display | string | 完整顯示字串 |
+
+### combination_reason 物件（命理預測專用）
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| method | string | 組合方法名稱 (頻率投票法) |
+| description | string | 組合方法說明 |
+| numbers | array | 每個號碼的投票詳情 |
+| special | object | 特別號的投票詳情 |
+
+### lucky_guidance 物件（命理預測詳情內）
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| lucky_time | string | 幸運時間 (例: 下午3-5點) |
+| lucky_color | string | 幸運顏色 (例: 紅色) |
+| lucky_direction | string | 幸運方位 (例: 東南方) |
+| lucky_item | string | 幸運物品 (例: 紅色錢包) |
 
 ### 歷史記錄物件
 

@@ -673,8 +673,18 @@ def call_gemini_ziwei(profile, lottery_type='big'):
     return json.loads(result.stdout)
 ```
 
+### 幸運指南
+Gemini AI 同時提供購買彩券的幸運指南：
+
+| 欄位 | 說明 | 範例 |
+|------|------|------|
+| lucky_time | 幸運時間 | 下午3-5點 |
+| lucky_color | 幸運顏色 | 紅色 |
+| lucky_direction | 幸運方位 | 東南方 |
+| lucky_item | 幸運物品 | 紅色錢包 |
+
 ### 優缺點
-- **優點**: 結合傳統命理與現代 AI，提供個人化預測
+- **優點**: 結合傳統命理與現代 AI，提供個人化預測和購買建議
 - **缺點**: 依賴外部 Gemini CLI，回應時間較長
 
 ---
@@ -753,6 +763,7 @@ DEFAULT_WEIGHTS = {
 1. 為每個人分別計算紫微/星座預測
 2. 合併所有人的推薦號碼
 3. 以出現頻率決定最終推薦
+4. 產生「號碼組合說明」解釋每個號碼的來源
 
 ```python
 def merge_astrology_predictions(profiles, lottery_type='big'):
@@ -773,4 +784,20 @@ def merge_astrology_predictions(profiles, lottery_type='big'):
     special = Counter(all_specials).most_common(1)[0][0]
 
     return top_6, special
+```
+
+### 號碼組合說明
+系統會為最終號碼產生組合說明，解釋每個號碼如何被選中：
+
+```json
+{
+  "method": "頻率投票法",
+  "description": "綜合 4 位家人的命理分析，選出最多人推薦的號碼",
+  "numbers": [
+    {"number": 7, "count": 4, "reason": "全員推薦"},
+    {"number": 12, "count": 3, "reason": "3/4 人推薦"},
+    {"number": 23, "count": 2, "reason": "2/4 人推薦"}
+  ],
+  "special": {"number": 9, "count": 2, "reason": "2/4 人推薦"}
+}
 ```
