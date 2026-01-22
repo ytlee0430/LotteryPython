@@ -13,6 +13,7 @@ from predict.lotto_predict_astrology import (
 )
 from predict.astrology.profiles import AllPredictionsCacheManager, UserManager, User
 from predict.astrology.gemini_client import GeminiAstrologyClient
+from predict.backtest import run_full_backtest, get_distribution_analysis
 import numpy as np
 import pandas as pd
 import json
@@ -459,6 +460,54 @@ def clear_astrology_cache():
             "message": f"已清除 {astrology_count} 筆命理分析快取",
             "cleared_count": astrology_count
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ Backtest & Analysis APIs ============
+
+@app.route('/backtest', methods=['GET'])
+@login_required
+def backtest():
+    """Run backtest for all algorithms.
+
+    Query params:
+        type: 'big' or 'super' (default: 'big')
+        periods: number of periods to test (default: 50)
+    """
+    lottery_type = request.args.get('type', 'big')
+    periods = int(request.args.get('periods', 50))
+
+    if lottery_type not in ['big', 'super']:
+        return jsonify({"error": "Invalid lottery type"}), 400
+    if periods < 10 or periods > 200:
+        return jsonify({"error": "Periods must be between 10 and 200"}), 400
+
+    try:
+        results = run_full_backtest(lottery_type, periods)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/analysis/distribution', methods=['GET'])
+@login_required
+def distribution_analysis():
+    """Get number distribution analysis.
+
+    Query params:
+        type: 'big' or 'super' (default: 'big')
+        periods: number of periods to analyze (default: 100)
+    """
+    lottery_type = request.args.get('type', 'big')
+    periods = int(request.args.get('periods', 100))
+
+    if lottery_type not in ['big', 'super']:
+        return jsonify({"error": "Invalid lottery type"}), 400
+    if periods < 10 or periods > 500:
+        return jsonify({"error": "Periods must be between 10 and 500"}), 400
+
+    try:
+        results = get_distribution_analysis(lottery_type, periods)
+        return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

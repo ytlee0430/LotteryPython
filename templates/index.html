@@ -149,6 +149,103 @@
             transform: none;
             box-shadow: none;
         }
+
+        /* Backtest styles */
+        .backtest-header, .distribution-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .backtest-header h2, .distribution-header h2 { margin: 0 0 10px 0; }
+        .backtest-header p, .distribution-header p { margin: 0; opacity: 0.9; }
+
+        .backtest-section, .distribution-section {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .backtest-section h3, .distribution-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        .backtest-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .backtest-table th, .backtest-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .backtest-table th { background: #f8f9fa; color: #333; }
+        .backtest-table tr:hover { background: #f5f5f5; }
+
+        .algo-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .algo-card.error { border-left-color: #dc3545; background: #fff5f5; }
+        .algo-header { font-weight: bold; font-size: 1.1em; margin-bottom: 10px; color: #333; }
+        .algo-stats { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; }
+        .algo-stats .stat { display: flex; gap: 5px; }
+        .algo-stats .label { color: #666; }
+        .algo-stats .value { font-weight: bold; color: #333; }
+        .hit-distribution { margin-top: 10px; }
+        .hit-badge {
+            display: inline-block;
+            background: #e3f2fd;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        /* Distribution styles */
+        .stat-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #f5f7fa, #e4e8ec);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-card .title { color: #666; font-size: 0.9em; margin-bottom: 5px; }
+        .stat-card .value { font-size: 1.5em; font-weight: bold; color: #333; }
+        .stat-card .detail { color: #888; font-size: 0.85em; margin-top: 5px; }
+
+        .number-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 10px;
+        }
+        .number-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            border-radius: 8px;
+            background: #f5f5f5;
+        }
+        .number-item.hot { background: linear-gradient(135deg, #ffebee, #ffcdd2); }
+        .number-item.cold { background: linear-gradient(135deg, #e3f2fd, #bbdefb); }
+        .number-item.special { background: linear-gradient(135deg, #fff8e1, #ffecb3); }
+        .number-item .rank { font-size: 0.75em; color: #666; }
+        .number-item .num { font-size: 1.4em; font-weight: bold; color: #333; }
+        .number-item .count { font-size: 0.8em; color: #888; }
     </style>
 </head>
 <body>
@@ -178,6 +275,8 @@
             <select id="action">
                 <option value="predict">All Algorithms (全部算法)</option>
                 <option value="predict/astrology">Astrology (命理預測) ⚡</option>
+                <option value="backtest">Backtest (回測報告) 📊</option>
+                <option value="analysis/distribution">Distribution (號碼分布) 📈</option>
                 <option value="update">Update Data (更新資料)</option>
                 <option value="combin">Combin (預測並存檔)</option>
                 <option value="history">History (歷史資料)</option>
@@ -301,6 +400,18 @@
                 // Handle History Data
                 if (data.history) {
                     renderHistory(data.history);
+                    return;
+                }
+
+                // Handle Backtest Results
+                if (data.ranking && data.algorithms) {
+                    renderBacktest(data);
+                    return;
+                }
+
+                // Handle Distribution Analysis
+                if (data.odd_even_ratio && data.hot_numbers) {
+                    renderDistribution(data);
                     return;
                 }
 
@@ -483,6 +594,172 @@
             });
             
             rows.forEach(row => tbody.appendChild(row));
+        }
+
+        function renderBacktest(data) {
+            const resultsDiv = document.getElementById('results');
+            const lotteryName = data.lottery_type === 'big' ? '大樂透' : '威力彩';
+
+            let html = `
+                <div class="backtest-header">
+                    <h2>📊 回測報告 - ${lotteryName}</h2>
+                    <p>測試期數: ${data.periods_tested} 期 (共 ${data.total_periods_available} 期資料)</p>
+                </div>
+            `;
+
+            // Ranking table
+            html += `
+                <div class="backtest-section">
+                    <h3>🏆 算法排名 (依平均命中數)</h3>
+                    <table class="backtest-table">
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>算法</th>
+                                <th>平均命中</th>
+                                <th>中3+機率</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            data.ranking.forEach((r, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+                html += `
+                    <tr>
+                        <td>${medal}</td>
+                        <td><strong>${r.algorithm}</strong></td>
+                        <td>${r.average_hits}</td>
+                        <td>${r.hit_3_plus_rate}%</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table></div>`;
+
+            // Detailed results for each algorithm
+            html += `<div class="backtest-section"><h3>📈 各算法詳細統計</h3>`;
+
+            for (const [algo, result] of Object.entries(data.algorithms)) {
+                if (result.error) {
+                    html += `<div class="algo-card error"><strong>${algo}</strong>: ${result.error}</div>`;
+                    continue;
+                }
+
+                html += `
+                    <div class="algo-card">
+                        <div class="algo-header">${algo}</div>
+                        <div class="algo-stats">
+                            <div class="stat"><span class="label">平均命中:</span><span class="value">${result.average_hits}</span></div>
+                            <div class="stat"><span class="label">最高/最低:</span><span class="value">${result.max_hits}/${result.min_hits}</span></div>
+                            <div class="stat"><span class="label">特別號命中率:</span><span class="value">${result.special_hit_rate}%</span></div>
+                            <div class="stat"><span class="label">中3+次數:</span><span class="value">${result.hit_3_or_more}</span></div>
+                            <div class="stat"><span class="label">中4+次數:</span><span class="value">${result.hit_4_or_more}</span></div>
+                            <div class="stat"><span class="label">中5+次數:</span><span class="value">${result.hit_5_or_more}</span></div>
+                        </div>
+                        <div class="hit-distribution">
+                            <span class="label">命中分布: </span>
+                            ${Object.entries(result.hit_distribution).map(([k, v]) =>
+                                `<span class="hit-badge">${k}中: ${v}次</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += `</div>`;
+            resultsDiv.innerHTML += html;
+        }
+
+        function renderDistribution(data) {
+            const resultsDiv = document.getElementById('results');
+            const lotteryName = data.lottery_type === 'big' ? '大樂透' : '威力彩';
+
+            let html = `
+                <div class="distribution-header">
+                    <h2>📈 號碼分布分析 - ${lotteryName}</h2>
+                    <p>分析期數: ${data.periods_analyzed} 期 (共 ${data.total_numbers_drawn} 個號碼)</p>
+                </div>
+            `;
+
+            // Odd/Even and High/Low
+            html += `
+                <div class="distribution-section">
+                    <h3>🎯 基本統計</h3>
+                    <div class="stat-cards">
+                        <div class="stat-card">
+                            <div class="title">奇偶比</div>
+                            <div class="value">${data.odd_even_ratio}</div>
+                            <div class="detail">奇數 ${data.odd_percentage}% / 偶數 ${data.even_percentage}%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="title">高低比</div>
+                            <div class="value">${data.high_low_ratio}</div>
+                            <div class="detail">高(>${data.mid_point}) ${data.high_percentage}% / 低 ${data.low_percentage}%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="title">總和範圍</div>
+                            <div class="value">${data.sum_min} - ${data.sum_max}</div>
+                            <div class="detail">平均: ${data.sum_average} (標準差: ${data.sum_std})</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="title">連號</div>
+                            <div class="value">平均 ${data.avg_consecutive} 組</div>
+                            <div class="detail">最多: ${data.max_consecutive} 組</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Hot numbers
+            html += `
+                <div class="distribution-section">
+                    <h3>🔥 熱門號碼 (最常出現)</h3>
+                    <div class="number-grid">
+                        ${data.hot_numbers.map((n, i) => `
+                            <div class="number-item hot">
+                                <span class="rank">#${i+1}</span>
+                                <span class="num">${n.number}</span>
+                                <span class="count">${n.count}次</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            // Cold numbers
+            html += `
+                <div class="distribution-section">
+                    <h3>❄️ 冷門號碼 (最少出現)</h3>
+                    <div class="number-grid">
+                        ${data.cold_numbers.map((n, i) => `
+                            <div class="number-item cold">
+                                <span class="rank">#${i+1}</span>
+                                <span class="num">${n.number}</span>
+                                <span class="count">${n.count}次</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            // Special number hot
+            html += `
+                <div class="distribution-section">
+                    <h3>⭐ 熱門特別號</h3>
+                    <div class="number-grid">
+                        ${data.special_hot.map((n, i) => `
+                            <div class="number-item special">
+                                <span class="rank">#${i+1}</span>
+                                <span class="num">${n.number}</span>
+                                <span class="count">${n.count}次</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            resultsDiv.innerHTML += html;
         }
 
         function toggleDetails(index) {
