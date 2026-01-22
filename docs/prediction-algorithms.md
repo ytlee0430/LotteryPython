@@ -801,3 +801,130 @@ def merge_astrology_predictions(profiles, lottery_type='big'):
   "special": {"number": 9, "count": 2, "reason": "2/4 人推薦"}
 }
 ```
+
+---
+
+## 回測系統 (Backtesting)
+
+### 原理
+回測系統用於評估各預測演算法的歷史表現，透過對歷史資料進行預測並與實際結果比較，計算命中率等指標。
+
+### 檔案位置
+`predict/backtest.py`
+
+### 主要功能
+
+#### 1. 完整回測報告 (run_full_backtest)
+```python
+def run_full_backtest(lottery_type: str = 'big', periods: int = 50) -> Dict:
+    """
+    對所有算法執行回測分析
+    
+    回傳:
+    - ranking: 算法排名（依平均命中數）
+    - algorithms: 各算法詳細統計
+      - average_hits: 平均命中數
+      - max_hits / min_hits: 最高/最低命中
+      - special_hit_rate: 特別號命中率
+      - hit_distribution: 命中分布
+    """
+```
+
+#### 2. 號碼分布分析 (analyze_number_distribution)
+```python
+def analyze_number_distribution(df, periods: int = 100) -> Dict:
+    """
+    分析歷史號碼分布特徵
+    
+    回傳:
+    - odd_even_ratio: 奇偶比
+    - high_low_ratio: 高低比
+    - hot_numbers: 熱門號碼 Top 10
+    - cold_numbers: 冷門號碼 Top 10
+    - sum_average/min/max: 總和統計
+    """
+```
+
+#### 3. 滾動回測 (rolling_backtest)
+```python
+def rolling_backtest(lottery_type: str = 'big', 
+                     window_size: int = 20,
+                     total_periods: int = 100) -> Dict:
+    """
+    滾動視窗回測，分析算法表現一致性
+    
+    回傳:
+    - rolling_results: 各時間視窗的表現數據
+    - algorithm_summary: 整體統計（平均、波動、最佳/最差視窗）
+    """
+```
+
+#### 4. 參數優化 (optimize_window_size)
+```python
+def optimize_window_size(lottery_type: str = 'big',
+                         min_window: int = 20,
+                         max_window: int = 100,
+                         step: int = 10) -> Dict:
+    """
+    尋找 Hot/Cold 算法的最佳視窗大小
+    
+    回傳:
+    - optimal: 最佳 hot_window 和 cold_window
+    - results: 各視窗大小的測試結果
+    """
+```
+
+---
+
+## 算法參數設定系統
+
+### 檔案位置
+- 設定模組: `predict/config.py`
+- 設定檔案: `predict/algorithm_config.json`
+
+### 可調整參數
+
+| 參數 | 預設值 | 說明 |
+|------|--------|------|
+| hot_window | 50 | Hot-50 分析期數 (10-200) |
+| cold_window | 50 | Cold-50 分析期數 (10-200) |
+| ensemble_weights | {...} | 各算法 Ensemble 權重 (0-5) |
+| backtest_periods | 50 | 回測預設期數 |
+
+### Ensemble 預設權重
+```python
+DEFAULT_WEIGHTS = {
+    "Hot-50": 1.0,
+    "Cold-50": 0.8,
+    "RandomForest": 1.5,
+    "GradientBoosting": 1.0,
+    "KNN": 1.2,
+    "XGBoost": 1.3,
+    "LSTM": 1.0,
+    "LSTM-RF": 1.2,
+    "Markov": 1.0,
+    "Pattern": 0.9,
+    "Astrology-Ziwei": 0.8,
+    "Astrology-Zodiac": 0.7
+}
+```
+
+### API 功能
+- `GET /config/algorithm`: 取得目前設定
+- `POST /config/algorithm`: 更新設定
+- `POST /config/algorithm/reset`: 重設為預設值
+- `POST /config/algorithm/auto-tune`: 根據回測結果自動調整權重
+
+### 自動調權重機制
+```python
+def update_weights_from_backtest(backtest_results: Dict):
+    """
+    根據回測結果自動調整 Ensemble 權重
+    
+    權重計算公式:
+    new_weight = base_weight * (1 + (avg_hits - baseline) * scale_factor)
+    
+    - baseline: 平均命中數的基準線 (1.0)
+    - scale_factor: 調整幅度因子 (0.5)
+    """
+```

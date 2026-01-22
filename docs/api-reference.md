@@ -528,3 +528,264 @@ fetch('/predict', {
 | date | string | 開獎日期 (YYYY-MM-DD) |
 | numbers | array[int] | 6 個開獎號碼 |
 | special | int | 特別號 |
+
+---
+
+## 回測與分析端點
+
+### POST /backtest
+
+**說明**: 執行完整回測報告，評估所有預測算法的歷史表現
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super",
+  "periods": 50  // 選填，預設 50
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "lottery_type": "big",
+  "periods_tested": 50,
+  "total_periods_available": 1200,
+  "ranking": [
+    { "algorithm": "Hot-50", "average_hits": 1.52, "hit_3_plus_rate": 12.0 },
+    { "algorithm": "Pattern", "average_hits": 1.48, "hit_3_plus_rate": 10.0 }
+  ],
+  "algorithms": {
+    "Hot-50": {
+      "average_hits": 1.52,
+      "max_hits": 4,
+      "min_hits": 0,
+      "special_hit_rate": 8.0,
+      "hit_3_or_more": 6,
+      "hit_4_or_more": 1,
+      "hit_5_or_more": 0,
+      "hit_distribution": { "0": 10, "1": 20, "2": 14, "3": 5, "4": 1 }
+    }
+  }
+}
+```
+
+---
+
+### POST /analysis/distribution
+
+**說明**: 分析號碼分布統計（奇偶比、高低比、熱門/冷門號碼）
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super",
+  "periods": 100  // 選填，預設 100
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "lottery_type": "big",
+  "periods_analyzed": 100,
+  "total_numbers_drawn": 600,
+  "odd_even_ratio": "312:288",
+  "odd_percentage": 52.0,
+  "even_percentage": 48.0,
+  "high_low_ratio": "295:305",
+  "high_percentage": 49.2,
+  "low_percentage": 50.8,
+  "mid_point": 24,
+  "sum_average": 147.5,
+  "sum_min": 89,
+  "sum_max": 215,
+  "sum_std": 28.3,
+  "avg_consecutive": 0.85,
+  "max_consecutive": 3,
+  "hot_numbers": [
+    { "number": 12, "count": 18 },
+    { "number": 35, "count": 17 }
+  ],
+  "cold_numbers": [
+    { "number": 49, "count": 3 },
+    { "number": 41, "count": 4 }
+  ],
+  "special_hot": [
+    { "number": 7, "count": 8 }
+  ]
+}
+```
+
+---
+
+### POST /backtest/rolling
+
+**說明**: 滾動回測 - 分析算法在不同時間視窗的表現一致性
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super",
+  "window": 20,   // 每個視窗期數，預設 20
+  "total": 100    // 總測試期數，預設 100
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "lottery_type": "big",
+  "window_size": 20,
+  "total_periods": 100,
+  "num_windows": 5,
+  "window_labels": ["001-020", "021-040", "041-060", "061-080", "081-100"],
+  "rolling_results": {
+    "Hot50": [
+      { "window": 1, "average_hits": 1.45, "hit_3_plus": 2 },
+      { "window": 2, "average_hits": 1.60, "hit_3_plus": 3 }
+    ],
+    "Markov": [...]
+  },
+  "algorithm_summary": {
+    "Hot50": {
+      "overall_average": 1.52,
+      "consistency": 0.15,
+      "best_window": 2,
+      "worst_window": 4
+    }
+  }
+}
+```
+
+---
+
+### POST /backtest/optimize
+
+**說明**: 參數優化 - 找出 Hot/Cold 算法的最佳視窗大小
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super",
+  "min": 20,    // 最小視窗，預設 20
+  "max": 100,   // 最大視窗，預設 100
+  "step": 10    // 步進值，預設 10
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "lottery_type": "big",
+  "test_periods": 50,
+  "window_range": { "min": 20, "max": 100, "step": 10 },
+  "results": [
+    { "window": 20, "algorithm": "Hot", "average_hits": 0.88, "hit_3_plus": 4 },
+    { "window": 20, "algorithm": "Cold", "average_hits": 0.82, "hit_3_plus": 3 }
+  ],
+  "optimal": {
+    "hot_window": 20,
+    "hot_avg_hits": 0.88,
+    "cold_window": 100,
+    "cold_avg_hits": 0.82
+  }
+}
+```
+
+---
+
+## 算法設定端點
+
+### GET /config/algorithm
+
+**說明**: 取得目前算法參數設定
+
+**成功回應** (200):
+```json
+{
+  "hot_window": 50,
+  "cold_window": 50,
+  "ensemble_weights": {
+    "Hot-50": 1.0,
+    "Cold-50": 0.8,
+    "RandomForest": 1.5,
+    "GradientBoosting": 1.0,
+    "KNN": 1.2,
+    "XGBoost": 1.3,
+    "LSTM": 1.0,
+    "LSTM-RF": 1.2,
+    "Markov": 1.0,
+    "Pattern": 0.9
+  },
+  "auto_tune_enabled": false,
+  "backtest_periods": 50
+}
+```
+
+---
+
+### POST /config/algorithm
+
+**說明**: 更新算法參數設定
+
+**請求格式**:
+```json
+{
+  "hot_window": 60,
+  "cold_window": 40,
+  "ensemble_weights": {
+    "Hot-50": 1.2,
+    "RandomForest": 1.8
+  }
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "status": "success",
+  "config": { ... }
+}
+```
+
+---
+
+### POST /config/algorithm/reset
+
+**說明**: 重設算法參數為預設值
+
+**成功回應** (200):
+```json
+{
+  "status": "success",
+  "message": "Config reset to defaults",
+  "config": { ... }
+}
+```
+
+---
+
+### POST /config/algorithm/auto-tune
+
+**說明**: 根據回測結果自動調整 Ensemble 權重
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super",
+  "periods": 50  // 選填
+}
+```
+
+**成功回應** (200):
+```json
+{
+  "status": "success",
+  "message": "Weights updated from backtest results",
+  "new_weights": {
+    "Hot-50": 1.52,
+    "RandomForest": 1.35
+  }
+}
+```
