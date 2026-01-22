@@ -211,6 +211,118 @@
             margin-bottom: 5px;
         }
 
+        /* Rolling backtest styles */
+        .rolling-chart {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .rolling-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 5px;
+            height: 150px;
+            padding: 10px 0;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .rolling-bar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .rolling-bar .bar {
+            width: 100%;
+            max-width: 40px;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+            border-radius: 4px 4px 0 0;
+            min-height: 10px;
+        }
+        .rolling-bar .label {
+            font-size: 0.7em;
+            color: #666;
+            margin-top: 5px;
+            text-align: center;
+        }
+        .rolling-bar .value {
+            font-size: 0.75em;
+            font-weight: bold;
+            color: #333;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .summary-item {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .summary-item .algo { font-weight: bold; color: #333; margin-bottom: 5px; }
+        .summary-item .avg { font-size: 1.2em; color: #667eea; }
+        .summary-item .consistency { font-size: 0.85em; color: #888; }
+
+        /* Optimization styles */
+        .optimization-header {
+            background: linear-gradient(135deg, #11998e, #38ef7d);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .optimization-header h2 { margin: 0 0 10px 0; }
+        .optimal-box {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .optimal-card {
+            background: linear-gradient(135deg, #fff, #f0fff0);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            border: 2px solid #38ef7d;
+        }
+        .optimal-card .title { color: #666; font-size: 0.9em; }
+        .optimal-card .window-value { font-size: 2em; font-weight: bold; color: #11998e; margin: 10px 0; }
+        .optimal-card .hits { color: #888; font-size: 0.9em; }
+        .optimal-card .apply-btn {
+            margin-top: 10px;
+            background: #11998e;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .optimal-card .apply-btn:hover { background: #0d7d71; }
+        .window-results {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .window-row {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .window-row:last-child { border-bottom: none; }
+        .window-row .size { width: 80px; font-weight: bold; }
+        .window-row .bar-container { flex: 1; margin: 0 15px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; }
+        .window-row .bar-fill { height: 100%; border-radius: 10px; transition: width 0.3s; }
+        .window-row .bar-fill.hot { background: linear-gradient(90deg, #ff6b6b, #ee5a5a); }
+        .window-row .bar-fill.cold { background: linear-gradient(90deg, #4ecdc4, #45b7aa); }
+        .window-row .hits { width: 60px; text-align: right; font-size: 0.9em; color: #666; }
+        .window-row.optimal { background: #f0fff0; }
+
         /* Distribution styles */
         .stat-cards {
             display: grid;
@@ -325,6 +437,8 @@
                 <option value="predict">All Algorithms (全部算法)</option>
                 <option value="predict/astrology">Astrology (命理預測) ⚡</option>
                 <option value="backtest">Backtest (回測報告) 📊</option>
+                <option value="backtest/rolling">Rolling Backtest (滾動回測) 📉</option>
+                <option value="backtest/optimize">Optimize Params (參數優化) 🔧</option>
                 <option value="analysis/distribution">Distribution (號碼分布) 📈</option>
                 <option value="update">Update Data (更新資料)</option>
                 <option value="combin">Combin (預測並存檔)</option>
@@ -605,6 +719,18 @@
                 // Handle Distribution Analysis
                 if (data.odd_even_ratio && data.hot_numbers) {
                     renderDistribution(data);
+                    return;
+                }
+
+                // Handle Rolling Backtest
+                if (data.rolling_results && data.algorithm_summary) {
+                    renderRollingBacktest(data);
+                    return;
+                }
+
+                // Handle Parameter Optimization
+                if (data.optimal && data.window_range) {
+                    renderOptimization(data);
                     return;
                 }
 
@@ -953,6 +1079,166 @@
             `;
 
             resultsDiv.innerHTML += html;
+        }
+
+        function renderRollingBacktest(data) {
+            const resultsDiv = document.getElementById('results');
+            const lotteryName = data.lottery_type === 'big' ? '大樂透' : '威力彩';
+
+            let html = `
+                <div class="backtest-header">
+                    <h2>📉 滾動回測 - ${lotteryName}</h2>
+                    <p>視窗大小: ${data.window_size} 期 | 總測試: ${data.total_periods} 期 | 共 ${data.num_windows} 個視窗</p>
+                </div>
+            `;
+
+            // Summary section
+            html += `<div class="backtest-section"><h3>📊 各算法一致性分析</h3><div class="summary-grid">`;
+            for (const [algo, summary] of Object.entries(data.algorithm_summary || {})) {
+                html += `
+                    <div class="summary-item">
+                        <div class="algo">${algo}</div>
+                        <div class="avg">平均 ${summary.overall_average}</div>
+                        <div class="consistency">波動 ±${summary.consistency}</div>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+
+            // Rolling chart for each algorithm
+            for (const [algo, results] of Object.entries(data.rolling_results || {})) {
+                const validResults = results.filter(r => !r.error);
+                if (validResults.length === 0) continue;
+
+                const maxHits = Math.max(...validResults.map(r => r.average_hits), 3);
+
+                html += `
+                    <div class="rolling-chart">
+                        <h4 style="margin-top:0;">${algo} 表現趨勢</h4>
+                        <div class="rolling-bars">
+                `;
+
+                results.forEach((r, i) => {
+                    const height = r.error ? 10 : (r.average_hits / maxHits) * 120;
+                    const label = data.window_labels?.[i] || `W${i+1}`;
+                    const color = r.error ? '#dc3545' : '';
+                    html += `
+                        <div class="rolling-bar">
+                            <div class="value">${r.error ? '!' : r.average_hits}</div>
+                            <div class="bar" style="height: ${height}px; ${color ? 'background:'+color : ''}"></div>
+                            <div class="label">${label}</div>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            }
+
+            resultsDiv.innerHTML += html;
+        }
+
+        function renderOptimization(data) {
+            const resultsDiv = document.getElementById('results');
+            const lotteryName = data.lottery_type === 'big' ? '大樂透' : '威力彩';
+            const optimal = data.optimal || {};
+
+            let html = `
+                <div class="optimization-header">
+                    <h2>🔧 參數優化結果 - ${lotteryName}</h2>
+                    <p>測試範圍: ${data.window_range?.min || 20} - ${data.window_range?.max || 100} 期 | 測試期數: ${data.test_periods} 期</p>
+                </div>
+            `;
+
+            // Optimal boxes
+            html += `<div class="optimal-box">`;
+            html += `
+                <div class="optimal-card">
+                    <div class="title">🔥 Hot 最佳視窗</div>
+                    <div class="window-value">${optimal.hot_window || 50}</div>
+                    <div class="hits">平均命中 ${optimal.hot_avg_hits || 0}</div>
+                    <button class="apply-btn" onclick="applyOptimalWindow('hot', ${optimal.hot_window || 50})">套用此設定</button>
+                </div>
+            `;
+            html += `
+                <div class="optimal-card">
+                    <div class="title">❄️ Cold 最佳視窗</div>
+                    <div class="window-value">${optimal.cold_window || 50}</div>
+                    <div class="hits">平均命中 ${optimal.cold_avg_hits || 0}</div>
+                    <button class="apply-btn" onclick="applyOptimalWindow('cold', ${optimal.cold_window || 50})">套用此設定</button>
+                </div>
+            `;
+            html += `</div>`;
+
+            // Detailed results chart
+            const hotResults = (data.results || []).filter(r => r.algorithm === 'Hot' && r.average_hits);
+            const coldResults = (data.results || []).filter(r => r.algorithm === 'Cold' && r.average_hits);
+            const maxHits = Math.max(
+                ...hotResults.map(r => r.average_hits),
+                ...coldResults.map(r => r.average_hits),
+                2
+            );
+
+            html += `<div class="window-results"><h3>📊 各視窗大小測試結果</h3>`;
+
+            // Group by window size
+            const windowSizes = [...new Set((data.results || []).map(r => r.window))].sort((a,b) => a-b);
+
+            windowSizes.forEach(size => {
+                const hot = hotResults.find(r => r.window === size);
+                const cold = coldResults.find(r => r.window === size);
+                const isOptimalHot = size === optimal.hot_window;
+                const isOptimalCold = size === optimal.cold_window;
+
+                html += `<div class="window-row ${isOptimalHot || isOptimalCold ? 'optimal' : ''}">
+                    <div class="size">${size} 期</div>
+                    <div class="bar-container">
+                        ${hot ? `<div class="bar-fill hot" style="width: ${(hot.average_hits / maxHits) * 100}%"></div>` : ''}
+                    </div>
+                    <div class="hits">${hot ? hot.average_hits : '-'}${isOptimalHot ? ' ⭐' : ''}</div>
+                    <div class="bar-container">
+                        ${cold ? `<div class="bar-fill cold" style="width: ${(cold.average_hits / maxHits) * 100}%"></div>` : ''}
+                    </div>
+                    <div class="hits">${cold ? cold.average_hits : '-'}${isOptimalCold ? ' ⭐' : ''}</div>
+                </div>`;
+            });
+
+            html += `<div style="margin-top:10px;font-size:0.85em;color:#888;">
+                <span style="display:inline-block;width:15px;height:15px;background:linear-gradient(90deg,#ff6b6b,#ee5a5a);border-radius:3px;vertical-align:middle;margin-right:5px;"></span> Hot
+                <span style="display:inline-block;width:15px;height:15px;background:linear-gradient(90deg,#4ecdc4,#45b7aa);border-radius:3px;vertical-align:middle;margin:0 5px 0 15px;"></span> Cold
+            </div>`;
+            html += `</div>`;
+
+            resultsDiv.innerHTML += html;
+        }
+
+        async function applyOptimalWindow(type, window) {
+            try {
+                // First load current config
+                const response = await fetch('/config/algorithm');
+                const config = await response.json();
+
+                // Update the appropriate window
+                if (type === 'hot') {
+                    config.hot_window = window;
+                } else {
+                    config.cold_window = window;
+                }
+
+                // Save config
+                const saveResponse = await fetch('/config/algorithm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                if (saveResponse.ok) {
+                    alert(`${type === 'hot' ? 'Hot' : 'Cold'} 視窗已設定為 ${window} 期!`);
+                } else {
+                    alert('設定失敗');
+                }
+            } catch (e) {
+                alert('設定失敗: ' + e.message);
+            }
         }
 
         function toggleDetails(index) {

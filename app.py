@@ -13,7 +13,10 @@ from predict.lotto_predict_astrology import (
 )
 from predict.astrology.profiles import AllPredictionsCacheManager, UserManager, User
 from predict.astrology.gemini_client import GeminiAstrologyClient
-from predict.backtest import run_full_backtest, get_distribution_analysis
+from predict.backtest import (
+    run_full_backtest, get_distribution_analysis,
+    rolling_backtest, optimize_window_size
+)
 from predict.config import (
     get_config, update_config, reset_to_defaults,
     update_weights_from_backtest
@@ -511,6 +514,67 @@ def distribution_analysis():
 
     try:
         results = get_distribution_analysis(lottery_type, periods)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/backtest/rolling', methods=['GET', 'POST'])
+@login_required
+def rolling_backtest_api():
+    """Run rolling backtest to show performance over time.
+
+    Query params (GET) or JSON body (POST):
+        type: 'big' or 'super' (default: 'big')
+        window: window size per test (default: 20)
+        total: total periods to analyze (default: 100)
+    """
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        lottery_type = data.get('type', 'big')
+        window_size = int(data.get('window', 20))
+        total_periods = int(data.get('total', 100))
+    else:
+        lottery_type = request.args.get('type', 'big')
+        window_size = int(request.args.get('window', 20))
+        total_periods = int(request.args.get('total', 100))
+
+    if lottery_type not in ['big', 'super']:
+        return jsonify({"error": "Invalid lottery type"}), 400
+
+    try:
+        results = rolling_backtest(lottery_type, window_size, total_periods)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/backtest/optimize', methods=['GET', 'POST'])
+@login_required
+def optimize_params_api():
+    """Find optimal window sizes for Hot/Cold algorithms.
+
+    Query params (GET) or JSON body (POST):
+        type: 'big' or 'super' (default: 'big')
+        min: minimum window (default: 20)
+        max: maximum window (default: 100)
+        step: step size (default: 10)
+    """
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        lottery_type = data.get('type', 'big')
+        min_window = int(data.get('min', 20))
+        max_window = int(data.get('max', 100))
+        step = int(data.get('step', 10))
+    else:
+        lottery_type = request.args.get('type', 'big')
+        min_window = int(request.args.get('min', 20))
+        max_window = int(request.args.get('max', 100))
+        step = int(request.args.get('step', 10))
+
+    if lottery_type not in ['big', 'super']:
+        return jsonify({"error": "Invalid lottery type"}), 400
+
+    try:
+        results = optimize_window_size(lottery_type, min_window, max_window, step)
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

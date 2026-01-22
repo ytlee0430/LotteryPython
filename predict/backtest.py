@@ -319,6 +319,199 @@ def get_distribution_analysis(lottery_type: str = 'big', periods: int = 100) -> 
     return analyze_number_distribution(df, periods)
 
 
+def rolling_backtest(lottery_type: str = 'big', window_size: int = 20,
+                     total_periods: int = 100) -> Dict:
+    """
+    Run rolling backtest to show performance over time.
+
+    Tests algorithms across multiple time windows to see consistency.
+
+    Args:
+        lottery_type: 'big' or 'super'
+        window_size: Size of each test window
+        total_periods: Total periods to analyze
+
+    Returns:
+        Dict with rolling performance data for visualization
+    """
+    df = load_historical_data(lottery_type)
+    if df.empty or len(df) < total_periods + 50:
+        return {"error": "Not enough historical data"}
+
+    algorithms = ['Hot50', 'Cold50', 'Markov', 'Pattern']
+    num_windows = total_periods // window_size
+
+    # Store results per window
+    rolling_results = {algo: [] for algo in algorithms}
+    window_labels = []
+
+    for w in range(num_windows):
+        # Calculate period range for this window
+        start_offset = w * window_size
+        end_idx = len(df) - total_periods + start_offset + window_size
+
+        # Get period label
+        if 'Period' in df.columns:
+            period_start = str(df.iloc[end_idx - window_size].get('Period', ''))
+            period_end = str(df.iloc[end_idx - 1].get('Period', ''))
+            window_labels.append(f"{period_start[-3:]}-{period_end[-3:]}")
+        else:
+            window_labels.append(f"W{w+1}")
+
+        # Test each algorithm on this window
+        for algo in algorithms:
+            try:
+                result = backtest_algorithm(df, algo, window_size, lottery_type)
+                if 'error' not in result:
+                    rolling_results[algo].append({
+                        'window': w + 1,
+                        'average_hits': result['average_hits'],
+                        'hit_3_plus': result['hit_3_or_more']
+                    })
+                else:
+                    rolling_results[algo].append({
+                        'window': w + 1,
+                        'average_hits': 0,
+                        'hit_3_plus': 0,
+                        'error': result['error']
+                    })
+            except Exception as e:
+                rolling_results[algo].append({
+                    'window': w + 1,
+                    'average_hits': 0,
+                    'hit_3_plus': 0,
+                    'error': str(e)
+                })
+
+    # Calculate overall stats per algorithm
+    algorithm_summary = {}
+    for algo in algorithms:
+        valid_results = [r for r in rolling_results[algo] if 'error' not in r]
+        if valid_results:
+            avg_hits = [r['average_hits'] for r in valid_results]
+            algorithm_summary[algo] = {
+                'overall_average': round(np.mean(avg_hits), 2),
+                'consistency': round(np.std(avg_hits), 2),  # Lower = more consistent
+                'best_window': max(range(len(valid_results)),
+                                   key=lambda i: valid_results[i]['average_hits']) + 1,
+                'worst_window': min(range(len(valid_results)),
+                                    key=lambda i: valid_results[i]['average_hits']) + 1
+            }
+
+    return {
+        'lottery_type': lottery_type,
+        'window_size': window_size,
+        'total_periods': total_periods,
+        'num_windows': num_windows,
+        'window_labels': window_labels,
+        'rolling_results': rolling_results,
+        'algorithm_summary': algorithm_summary
+    }
+
+
+def optimize_window_size(lottery_type: str = 'big',
+                         min_window: int = 20, max_window: int = 100,
+                         step: int = 10, test_periods: int = 50) -> Dict:
+    """
+    Find optimal window size for Hot/Cold algorithms.
+
+    Tests different window sizes and finds the one with best average hits.
+
+    Args:
+        lottery_type: 'big' or 'super'
+        min_window: Minimum window size to test
+        max_window: Maximum window size to test
+        step: Step size between tests
+        test_periods: Number of periods to test each window
+
+    Returns:
+        Dict with optimization results
+    """
+    df = load_historical_data(lottery_type)
+    if df.empty:
+        return {"error": "No historical data found"}
+
+    window_sizes = list(range(min_window, max_window + 1, step))
+    results = []
+
+    for window in window_sizes:
+        # Test Hot algorithm with this window
+        hot_result = {'window': window, 'algorithm': 'Hot'}
+        try:
+            # Temporarily use different window for testing
+            hot_hits = []
+            for i in range(test_periods):
+                train_end = len(df) - test_periods + i
+                if train_end < window:
+                    continue
+
+                actual_row = df.iloc[train_end]
+                actual_numbers = [
+                    actual_row['First'], actual_row['Second'], actual_row['Third'],
+                    actual_row['Fourth'], actual_row['Fifth'], actual_row['Sixth']
+                ]
+
+                # Predict with custom window
+                predicted, _, _ = predict_hot50(df, train_end, window=window)
+                hits = len(set(predicted) & set(actual_numbers))
+                hot_hits.append(hits)
+
+            if hot_hits:
+                hot_result['average_hits'] = round(np.mean(hot_hits), 3)
+                hot_result['hit_3_plus'] = sum(1 for h in hot_hits if h >= 3)
+        except Exception as e:
+            hot_result['error'] = str(e)
+
+        results.append(hot_result)
+
+        # Test Cold algorithm with this window
+        cold_result = {'window': window, 'algorithm': 'Cold'}
+        try:
+            cold_hits = []
+            for i in range(test_periods):
+                train_end = len(df) - test_periods + i
+                if train_end < window:
+                    continue
+
+                actual_row = df.iloc[train_end]
+                actual_numbers = [
+                    actual_row['First'], actual_row['Second'], actual_row['Third'],
+                    actual_row['Fourth'], actual_row['Fifth'], actual_row['Sixth']
+                ]
+
+                predicted, _, _ = predict_cold50(df, train_end, window=window)
+                hits = len(set(predicted) & set(actual_numbers))
+                cold_hits.append(hits)
+
+            if cold_hits:
+                cold_result['average_hits'] = round(np.mean(cold_hits), 3)
+                cold_result['hit_3_plus'] = sum(1 for h in cold_hits if h >= 3)
+        except Exception as e:
+            cold_result['error'] = str(e)
+
+        results.append(cold_result)
+
+    # Find optimal windows
+    hot_results = [r for r in results if r['algorithm'] == 'Hot' and 'average_hits' in r]
+    cold_results = [r for r in results if r['algorithm'] == 'Cold' and 'average_hits' in r]
+
+    optimal_hot = max(hot_results, key=lambda x: x['average_hits']) if hot_results else None
+    optimal_cold = max(cold_results, key=lambda x: x['average_hits']) if cold_results else None
+
+    return {
+        'lottery_type': lottery_type,
+        'test_periods': test_periods,
+        'window_range': {'min': min_window, 'max': max_window, 'step': step},
+        'results': results,
+        'optimal': {
+            'hot_window': optimal_hot['window'] if optimal_hot else 50,
+            'hot_avg_hits': optimal_hot['average_hits'] if optimal_hot else 0,
+            'cold_window': optimal_cold['window'] if optimal_cold else 50,
+            'cold_avg_hits': optimal_cold['average_hits'] if optimal_cold else 0
+        }
+    }
+
+
 if __name__ == "__main__":
     # Test backtest
     print("=== Backtest Results ===")

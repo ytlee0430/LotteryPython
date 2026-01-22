@@ -1,0 +1,20 @@
+{
+  "hot_window": 50,
+  "cold_window": 50,
+  "ensemble_weights": {
+    "Hot-50": 2.0,
+    "Cold-50": 0.5,
+    "RandomForest": 1.5,
+    "GradientBoosting": 1,
+    "KNN": 1.2,
+    "XGBoost": 1.3,
+    "LSTM": 1,
+    "LSTM-RF": 1.2,
+    "Markov": 1.8,
+    "Pattern": 1.69,
+    "Astrology-Ziwei": 0.8,
+    "Astrology-Zodiac": 0.7
+  },
+  "auto_tune_enabled": false,
+  "backtest_periods": 50
+}
