@@ -472,17 +472,22 @@ def clear_astrology_cache():
 
 # ============ Backtest & Analysis APIs ============
 
-@app.route('/backtest', methods=['GET'])
+@app.route('/backtest', methods=['GET', 'POST'])
 @login_required
 def backtest():
     """Run backtest for all algorithms.
 
-    Query params:
+    Query params (GET) or JSON body (POST):
         type: 'big' or 'super' (default: 'big')
         periods: number of periods to test (default: 50)
     """
-    lottery_type = request.args.get('type', 'big')
-    periods = int(request.args.get('periods', 50))
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        lottery_type = data.get('type', 'big')
+        periods = int(data.get('periods', 50))
+    else:
+        lottery_type = request.args.get('type', 'big')
+        periods = int(request.args.get('periods', 50))
 
     if lottery_type not in ['big', 'super']:
         return jsonify({"error": "Invalid lottery type"}), 400
@@ -495,17 +500,22 @@ def backtest():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/analysis/distribution', methods=['GET'])
+@app.route('/analysis/distribution', methods=['GET', 'POST'])
 @login_required
 def distribution_analysis():
     """Get number distribution analysis.
 
-    Query params:
+    Query params (GET) or JSON body (POST):
         type: 'big' or 'super' (default: 'big')
         periods: number of periods to analyze (default: 100)
     """
-    lottery_type = request.args.get('type', 'big')
-    periods = int(request.args.get('periods', 100))
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        lottery_type = data.get('type', 'big')
+        periods = int(data.get('periods', 100))
+    else:
+        lottery_type = request.args.get('type', 'big')
+        periods = int(request.args.get('periods', 100))
 
     if lottery_type not in ['big', 'super']:
         return jsonify({"error": "Invalid lottery type"}), 400
