@@ -28,7 +28,7 @@ class GeminiAstrologyClient:
     ]
 
     # Default model
-    DEFAULT_MODEL = "gemini-2.0-flash"
+    DEFAULT_MODEL = "gemini-3-pro-preview"
 
     def __init__(self, timeout: int = 180, model: str = None,
                  max_retries: int = 3, retry_delay: int = 3):
@@ -37,7 +37,7 @@ class GeminiAstrologyClient:
 
         Args:
             timeout: Maximum seconds to wait for Gemini response
-            model: Gemini model to use (default: gemini-2.0-flash)
+            model: Gemini model to use (default: gemini-3-pro-preview)
             max_retries: Maximum number of retry attempts on parse failure
             retry_delay: Seconds to wait between retries
         """

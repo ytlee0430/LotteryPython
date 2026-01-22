@@ -1,8 +1,8 @@
 {
   "hot_window": 50,
-  "cold_window": 50,
+  "cold_window": 20,
   "ensemble_weights": {
-    "Hot-50": 2.0,
+    "Hot-50": 2,
     "Cold-50": 0.5,
     "RandomForest": 1.5,
     "GradientBoosting": 1,
@@ -11,9 +11,9 @@
     "LSTM": 1,
     "LSTM-RF": 1.2,
     "Markov": 1.8,
-    "Pattern": 1.69,
-    "Astrology-Ziwei": 0.8,
-    "Astrology-Zodiac": 0.7
+    "Pattern": 1.55,
+    "Astrology-Ziwei": 1,
+    "Astrology-Zodiac": 1
   },
   "auto_tune_enabled": false,
   "backtest_periods": 50
