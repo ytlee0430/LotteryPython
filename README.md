@@ -84,7 +84,25 @@ The script skips days without scheduled draws, so running it Monday through
 Friday is safe. Set the `PYTHON_BIN` environment variable before the command if
 you need to use a specific Python interpreter.
 
-## LSTM Analysis
+## Prediction Algorithms
+
+The project includes multiple prediction algorithms:
+
+| Algorithm | Description |
+|-----------|-------------|
+| Hot50 | Selects numbers that appeared most frequently in recent draws |
+| Cold50 | Selects numbers that appeared least frequently (due for selection) |
+| Markov | Uses Markov chain transition probabilities between numbers |
+| Pattern | Analyzes historical patterns and sequences |
+| RandomForest | Machine learning ensemble using random forests |
+| GradientBoosting | Gradient boosting machine learning model |
+| KNN | K-Nearest Neighbors based on historical feature similarity |
+| XGBoost | Extreme Gradient Boosting for improved accuracy |
+| LSTM | Long Short-Term Memory neural network |
+| LSTM-RF | Hybrid combining LSTM with Random Forest |
+| Ensemble | Weighted combination of all algorithms |
+
+### LSTM Analysis
 
 An experimental script is provided to generate number predictions using an
 LSTM neural network. It trains on the historical draws in
@@ -96,6 +114,93 @@ python predict/lotto_predict_lstm.py
 
 The model is very small and intended only as a demonstration, so the output
 should not be considered accurate.
+
+## Backtest API
+
+The application provides comprehensive backtesting endpoints to evaluate algorithm performance:
+
+### Run Full Backtest
+
+```
+GET/POST /backtest
+```
+
+Parameters:
+- `type`: `'big'` or `'super'` (default: `'big'`)
+- `periods`: Number of periods to test, 10-200 (default: 50)
+
+Returns performance metrics for all algorithms including:
+- Average hits per draw
+- Hit distribution (0-6 matches)
+- Special number hit rate
+- Algorithm ranking
+
+### Rolling Backtest
+
+```
+GET/POST /backtest/rolling
+```
+
+Parameters:
+- `type`: `'big'` or `'super'` (default: `'big'`)
+- `window`: Window size per test (default: 20)
+- `total`: Total periods to analyze (default: 100)
+
+Shows algorithm performance over time across multiple windows for consistency analysis.
+
+### Parameter Optimization
+
+```
+GET/POST /backtest/optimize
+```
+
+Parameters:
+- `type`: `'big'` or `'super'` (default: `'big'`)
+- `min`: Minimum window size (default: 20)
+- `max`: Maximum window size (default: 100)
+- `step`: Step size (default: 10)
+
+Finds optimal window sizes for Hot/Cold algorithms.
+
+### Number Distribution Analysis
+
+```
+GET/POST /analysis/distribution
+```
+
+Parameters:
+- `type`: `'big'` or `'super'` (default: `'big'`)
+- `periods`: Number of periods to analyze (default: 100)
+
+Returns:
+- Odd/even ratio and percentages
+- High/low number distribution
+- Sum statistics
+- Hot and cold numbers
+- Consecutive number patterns
+
+## Algorithm Configuration API
+
+### Get/Set Configuration
+
+```
+GET /config/algorithm       # Get current config
+POST /config/algorithm      # Update config
+POST /config/algorithm/reset  # Reset to defaults
+```
+
+Configuration options:
+- `hot_window`: Window size for Hot50 algorithm (10-200)
+- `cold_window`: Window size for Cold50 algorithm (10-200)
+- `ensemble_weights`: Dictionary of algorithm weights
+
+### Auto-Tune Weights
+
+```
+POST /config/algorithm/auto-tune
+```
+
+Automatically adjusts ensemble weights based on backtest performance.
 
 ## Docker
 

@@ -86,6 +86,15 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 - macOS launchd / cron 整合
 - 依開獎日自動執行更新與預測
 
+### 10. 回測與分析系統
+- **完整回測**: 評估所有預測算法的歷史表現
+- **支援算法**: Hot50, Cold50, Markov, Pattern, RandomForest, GradientBoosting, KNN, XGBoost, LSTM, LSTM-RF, Ensemble
+- **滾動回測**: 分析算法在不同時間視窗的表現一致性
+- **參數優化**: 自動尋找 Hot/Cold 算法的最佳視窗大小
+- **號碼分布分析**: 奇偶比、高低比、熱門/冷門號碼統計
+- **自動調參**: 根據回測結果自動調整 Ensemble 權重
+- **API 端點**: `/backtest`, `/backtest/rolling`, `/backtest/optimize`, `/analysis/distribution`
+
 ## 系統需求
 
 ### 軟體需求
@@ -149,6 +158,6 @@ LotteryPython/
 
 ## 版本資訊
 
-- **當前版本**: 1.3.0
+- **當前版本**: 1.4.0
 - **Python 版本**: 3.9+
-- **最後更新**: 2026-01-21
+- **最後更新**: 2026-01-23

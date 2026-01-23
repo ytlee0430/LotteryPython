@@ -16,6 +16,11 @@ from predict.lotto_predict_hot_50 import predict_hot50
 from predict.lotto_predict_cold_50 import predict_cold50
 from predict.lotto_predict_markov import predict_markov
 from predict.lotto_predict_pattern import predict_pattern
+from predict.lotto_predict_rf_gb_knn import predict_algorithms
+from predict.lotto_predict_xgboost import predict_xgboost
+from predict.lotto_predict_lstm import predict_lstm
+from predict.lotto_predict_LSTMRF import predict_lstm_rf
+from predict.lotto_predict_ensemble import predict_ensemble
 
 
 def load_historical_data(lottery_type: str = 'big') -> pd.DataFrame:
@@ -99,6 +104,31 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
                 result = predict_markov(df, train_end)
             elif algorithm_name == 'Pattern':
                 result = predict_pattern(df, train_end)
+            elif algorithm_name == 'XGBoost':
+                result = predict_xgboost(df, train_end)
+            elif algorithm_name in ['RandomForest', 'GradientBoosting', 'KNN']:
+                # These algorithms use df.iloc[-HISTORY:] internally
+                # So we pass sliced df up to train_end
+                df_sliced = df.iloc[:train_end]
+                if len(df_sliced) < 50:
+                    raise ValueError("Not enough data for ML algorithms")
+                alg_results, sp, _ = predict_algorithms(df_sliced)
+                result = (alg_results.get(algorithm_name, []), sp, {})
+            elif algorithm_name == 'LSTM':
+                # LSTM uses entire df, so slice it
+                df_sliced = df.iloc[:train_end]
+                if len(df_sliced) < 50:
+                    raise ValueError("Not enough data for LSTM")
+                result = predict_lstm(df_sliced, lottery_type)
+            elif algorithm_name == 'LSTM-RF':
+                # LSTM-RF uses entire df, so slice it
+                df_sliced = df.iloc[:train_end]
+                if len(df_sliced) < 50:
+                    raise ValueError("Not enough data for LSTM-RF")
+                result = predict_lstm_rf(df_sliced, lottery_type)
+            elif algorithm_name == 'Ensemble':
+                # Ensemble combines multiple algorithms
+                result = predict_ensemble(df, train_end)
             else:
                 return {"error": f"Unknown algorithm: {algorithm_name}"}
 
@@ -169,7 +199,9 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50) -> Dict:
     if df.empty:
         return {"error": "No historical data found"}
 
-    algorithms = ['Hot50', 'Cold50', 'Markov', 'Pattern']
+    # All supported algorithms for backtesting
+    algorithms = ['Hot50', 'Cold50', 'Markov', 'Pattern', 'RandomForest',
+                  'GradientBoosting', 'KNN', 'XGBoost', 'LSTM', 'LSTM-RF', 'Ensemble']
     results = {}
 
     for algo in algorithms:
@@ -338,7 +370,9 @@ def rolling_backtest(lottery_type: str = 'big', window_size: int = 20,
     if df.empty or len(df) < total_periods + 50:
         return {"error": "Not enough historical data"}
 
-    algorithms = ['Hot50', 'Cold50', 'Markov', 'Pattern']
+    # All supported algorithms for rolling backtest
+    algorithms = ['Hot50', 'Cold50', 'Markov', 'Pattern', 'RandomForest',
+                  'GradientBoosting', 'KNN', 'XGBoost', 'LSTM', 'LSTM-RF', 'Ensemble']
     num_windows = total_periods // window_size
 
     # Store results per window
