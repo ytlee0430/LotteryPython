@@ -407,6 +407,416 @@
         .settings-btn.secondary:hover { background: #5a6268; }
         .settings-btn.danger { background: #dc3545; }
         .settings-btn.danger:hover { background: #c82333; }
+
+        /* ========== RESPONSIVE STYLES ========== */
+
+        /* Tablet (max-width: 768px) */
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .control-group {
+                width: 100%;
+            }
+
+            .control-group select, .control-group button {
+                width: 100%;
+            }
+
+            .nav {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start !important;
+            }
+
+            .nav > div {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            /* Tables responsive */
+            table {
+                font-size: 0.9em;
+            }
+
+            th, td {
+                padding: 8px 10px;
+            }
+
+            .lotto-num {
+                width: 24px;
+                height: 24px;
+                line-height: 24px;
+                font-size: 0.95em;
+                margin-right: 2px;
+            }
+
+            /* Draw info banner */
+            .draw-info-banner {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+
+            .draw-info-banner > div {
+                text-align: center !important;
+            }
+
+            /* Settings panel */
+            .settings-panel {
+                padding: 15px;
+            }
+
+            #weightsContainer {
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+            }
+
+            /* Stat cards */
+            .stat-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            /* Number grid */
+            .number-grid {
+                grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+            }
+
+            /* Algo stats */
+            .algo-stats {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            /* Summary grid */
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            /* Rolling bars */
+            .rolling-bars {
+                height: 120px;
+            }
+
+            .rolling-bar .label {
+                font-size: 0.6em;
+            }
+
+            /* Optimization */
+            .optimal-box {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .window-row {
+                flex-wrap: wrap;
+            }
+
+            .window-row .size {
+                width: 60px;
+                font-size: 0.9em;
+            }
+
+            .window-row .hits {
+                width: 50px;
+                font-size: 0.85em;
+            }
+        }
+
+        /* Mobile (max-width: 480px) */
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.3em;
+            }
+
+            .controls {
+                padding: 15px;
+            }
+
+            select, button {
+                font-size: 14px;
+                padding: 10px;
+            }
+
+            /* Table scroll on mobile */
+            #results {
+                overflow-x: auto;
+            }
+
+            table {
+                min-width: 500px;
+                font-size: 0.85em;
+            }
+
+            th, td {
+                padding: 6px 8px;
+            }
+
+            .badge {
+                padding: 1px 4px;
+                font-size: 0.85em;
+                margin-right: 2px;
+            }
+
+            .lotto-num {
+                width: 22px;
+                height: 22px;
+                line-height: 22px;
+                font-size: 0.9em;
+            }
+
+            /* Draw info banner mobile */
+            .draw-info-banner {
+                padding: 12px 15px;
+            }
+
+            .draw-info-banner .period {
+                font-size: 1.1em;
+            }
+
+            .draw-info-banner .date {
+                font-size: 1em;
+            }
+
+            /* Stat cards */
+            .stat-cards {
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+
+            .stat-card {
+                padding: 12px;
+            }
+
+            .stat-card .value {
+                font-size: 1.2em;
+            }
+
+            /* Number grid */
+            .number-grid {
+                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+                gap: 8px;
+            }
+
+            .number-item {
+                padding: 8px;
+            }
+
+            .number-item .num {
+                font-size: 1.2em;
+            }
+
+            /* Top 10 grid */
+            .top10-grid {
+                grid-template-columns: repeat(5, 1fr);
+                gap: 5px;
+            }
+
+            .top10-item {
+                padding: 5px;
+            }
+
+            .top10-item .num {
+                font-size: 14px;
+            }
+
+            .top10-item .rank, .top10-item .score {
+                font-size: 10px;
+            }
+
+            /* Backtest sections */
+            .backtest-header, .distribution-header, .optimization-header {
+                padding: 15px;
+            }
+
+            .backtest-header h2, .distribution-header h2, .optimization-header h2 {
+                font-size: 1.1em;
+            }
+
+            .backtest-section, .distribution-section {
+                padding: 12px 15px;
+            }
+
+            .backtest-section h3, .distribution-section h3 {
+                font-size: 1em;
+            }
+
+            .algo-card {
+                padding: 12px;
+            }
+
+            .algo-header {
+                font-size: 1em;
+            }
+
+            .hit-badge {
+                font-size: 0.8em;
+                padding: 2px 6px;
+            }
+
+            /* Summary grid */
+            .summary-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+
+            .summary-item {
+                padding: 10px;
+            }
+
+            .summary-item .algo {
+                font-size: 0.85em;
+            }
+
+            .summary-item .avg {
+                font-size: 1em;
+            }
+
+            /* Rolling chart */
+            .rolling-chart {
+                padding: 10px;
+            }
+
+            .rolling-bars {
+                height: 100px;
+                gap: 3px;
+            }
+
+            .rolling-bar .value {
+                font-size: 0.65em;
+            }
+
+            .rolling-bar .label {
+                font-size: 0.55em;
+            }
+
+            /* Optimization */
+            .optimal-box {
+                grid-template-columns: 1fr;
+            }
+
+            .optimal-card {
+                padding: 15px;
+            }
+
+            .optimal-card .window-value {
+                font-size: 1.5em;
+            }
+
+            .window-results {
+                padding: 10px;
+            }
+
+            .window-row {
+                padding: 8px;
+            }
+
+            .window-row .size {
+                width: 50px;
+                font-size: 0.85em;
+            }
+
+            .window-row .bar-container {
+                margin: 0 8px;
+            }
+
+            .window-row .hits {
+                width: 40px;
+                font-size: 0.8em;
+            }
+
+            /* Lucky guidance */
+            .lucky-guidance {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            /* Combination reason */
+            .number-votes {
+                gap: 6px;
+            }
+
+            .number-vote {
+                padding: 4px 8px;
+                font-size: 0.85em;
+            }
+
+            /* Astrology text */
+            .astrology-text {
+                padding: 10px;
+                font-size: 0.9em;
+                line-height: 1.5;
+            }
+
+            /* Pattern info */
+            .pattern-info {
+                padding: 10px;
+            }
+
+            .pattern-info span {
+                display: block;
+                margin-bottom: 5px;
+            }
+
+            /* Settings panel */
+            .settings-panel {
+                padding: 12px;
+            }
+
+            .settings-panel h3 {
+                font-size: 1em;
+            }
+
+            .settings-group > div {
+                flex-direction: column !important;
+                gap: 10px !important;
+            }
+
+            #weightsContainer {
+                grid-template-columns: 1fr 1fr !important;
+            }
+
+            .settings-btn {
+                padding: 8px 12px;
+                font-size: 0.9em;
+                margin-bottom: 8px;
+            }
+
+            /* Cache control */
+            .astrology-cache-control {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+
+            /* Details row */
+            .details-btn {
+                padding: 3px 6px;
+                font-size: 11px;
+            }
+
+            .details-cell {
+                padding: 10px !important;
+            }
+
+            /* Backtest table */
+            .backtest-table th, .backtest-table td {
+                padding: 8px;
+                font-size: 0.85em;
+            }
+        }
     </style>
 </head>
 <body>
