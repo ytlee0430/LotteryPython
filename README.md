@@ -202,6 +202,43 @@ POST /config/algorithm/auto-tune
 
 Automatically adjusts ensemble weights based on backtest performance.
 
+## Backtest Cache
+
+Backtest results are automatically cached in SQLite database for faster subsequent queries.
+
+### Cache Statistics
+
+```
+GET /cache/backtest/stats
+```
+
+Returns cache entry counts and sizes for all backtest types.
+
+### Clear Cache
+
+```
+POST /cache/backtest/clear
+```
+
+Parameters:
+- `type`: `'all'`, `'algorithm'`, `'full'`, `'rolling'`, or `'optimize'` (default: `'all'`)
+
+### Clear Outdated Cache
+
+```
+POST /cache/backtest/clear-outdated
+```
+
+Removes cache entries that don't match current data version (after new lottery data is added).
+
+### Cache Performance
+
+| Scenario | First Run | Cached |
+|----------|-----------|--------|
+| Full backtest (50 periods) | ~30-60s | <1s |
+| Rolling backtest (100 periods) | ~2-3min | <1s |
+| Parameter optimization | ~1-2min | <1s |
+
 ## Docker
 
 A `Dockerfile` and `docker-compose.yml` are included for running the web application with Nginx.

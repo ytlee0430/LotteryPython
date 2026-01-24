@@ -15,7 +15,8 @@ from predict.astrology.profiles import AllPredictionsCacheManager, UserManager, 
 from predict.astrology.gemini_client import GeminiAstrologyClient
 from predict.backtest import (
     run_full_backtest, get_distribution_analysis,
-    rolling_backtest, optimize_window_size
+    rolling_backtest, optimize_window_size,
+    get_backtest_cache_stats, clear_backtest_cache, clear_outdated_backtest_cache
 )
 from predict.config import (
     get_config, update_config, reset_to_defaults,
@@ -445,14 +446,16 @@ def predict_zodiac_only():
 @app.route('/cache/stats', methods=['GET'])
 @login_required
 def cache_stats():
-    """Get prediction cache statistics for current user."""
+    """Get all cache statistics (prediction and backtest)."""
     try:
         astrology_stats = get_cache_stats(user_id=current_user.id)
         all_cache = AllPredictionsCacheManager()
         all_stats = all_cache.get_cache_stats(user_id=current_user.id)
+        backtest_stats = get_backtest_cache_stats()
         return jsonify({
             "astrology_cache": astrology_stats,
-            "all_predictions_cache": all_stats
+            "all_predictions_cache": all_stats,
+            "backtest_cache": backtest_stats
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -469,6 +472,73 @@ def clear_astrology_cache():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ============ Backtest Cache APIs ============
+
+@app.route('/cache/backtest/stats', methods=['GET'])
+@login_required
+def backtest_cache_stats():
+    """Get backtest cache statistics.
+
+    Returns cache counts and sizes for all backtest cache types.
+    """
+    try:
+        stats = get_backtest_cache_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/cache/backtest/clear', methods=['POST'])
+@login_required
+def clear_backtest_cache_api():
+    """Clear backtest cache.
+
+    JSON body:
+        type: 'all', 'algorithm', 'full', 'rolling', or 'optimize' (default: 'all')
+    """
+    try:
+        data = request.get_json() or {}
+        cache_type = data.get('type', 'all')
+
+        if cache_type not in ['all', 'algorithm', 'full', 'rolling', 'optimize']:
+            return jsonify({"error": "Invalid cache type. Use: all, algorithm, full, rolling, optimize"}), 400
+
+        result = clear_backtest_cache(cache_type)
+        return jsonify({
+            "message": f"已清除 {result['total']} 筆回測快取",
+            "cleared": result
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/cache/backtest/clear-outdated', methods=['POST'])
+@login_required
+def clear_outdated_backtest_cache_api():
+    """Clear outdated backtest cache entries.
+
+    Removes cache entries that don't match current data version (useful after data updates).
+
+    JSON body:
+        type: 'big', 'super', or null for both (default: null)
+    """
+    try:
+        data = request.get_json() or {}
+        lottery_type = data.get('type')
+
+        if lottery_type and lottery_type not in ['big', 'super']:
+            return jsonify({"error": "Invalid lottery type. Use: big, super, or null for both"}), 400
+
+        result = clear_outdated_backtest_cache(lottery_type)
+        return jsonify({
+            "message": f"已清除 {result['total']} 筆過期回測快取",
+            "cleared": result
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # ============ Backtest & Analysis APIs ============
 

@@ -95,6 +95,20 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 - **自動調參**: 根據回測結果自動調整 Ensemble 權重
 - **API 端點**: `/backtest`, `/backtest/rolling`, `/backtest/optimize`, `/analysis/distribution`
 
+### 11. 回測快取系統
+- **SQLite 快取**: 回測結果存入 SQLite 資料庫，大幅加速重複查詢
+- **快取類型**:
+  - `algorithm_cache`: 單一算法回測結果
+  - `full_cache`: 完整回測報告
+  - `rolling_cache`: 滾動回測結果
+  - `optimize_cache`: 參數優化結果
+- **版本追蹤**: 快取 key 包含最新期數，新資料加入時自動失效
+- **效能提升**: 首次計算 ~30-60 秒，快取後 <1 秒
+- **快取管理 API**:
+  - `/cache/backtest/stats`: 查看快取統計
+  - `/cache/backtest/clear`: 清除快取
+  - `/cache/backtest/clear-outdated`: 清除過期快取
+
 ## 系統需求
 
 ### 軟體需求
@@ -158,6 +172,6 @@ LotteryPython/
 
 ## 版本資訊
 
-- **當前版本**: 1.4.0
+- **當前版本**: 1.5.0
 - **Python 版本**: 3.9+
-- **最後更新**: 2026-01-23
+- **最後更新**: 2026-01-24

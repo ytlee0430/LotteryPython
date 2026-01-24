@@ -478,6 +478,130 @@ fetch('/predict', {
 
 ---
 
+## 回測快取管理端點
+
+回測計算耗時較長，系統會自動快取結果。當新開獎資料加入時，快取會自動失效重新計算。
+
+### GET /cache/backtest/stats
+
+**說明**: 取得回測快取統計資訊
+
+**成功回應** (200):
+```json
+{
+  "algorithm_cache": { "count": 22, "total_size_kb": 45.2 },
+  "full_cache": { "count": 4, "total_size_kb": 180.5 },
+  "rolling_cache": { "count": 2, "total_size_kb": 120.3 },
+  "optimize_cache": { "count": 2, "total_size_kb": 35.8 },
+  "total_entries": 30,
+  "total_size_kb": 381.8
+}
+```
+
+---
+
+### POST /cache/backtest/clear
+
+**說明**: 清除回測快取
+
+**請求格式**:
+```json
+{
+  "type": "all" | "algorithm" | "full" | "rolling" | "optimize"
+}
+```
+
+**參數**:
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| type | string | 否 | 快取類型，預設 'all' |
+
+- `all`: 清除所有回測快取
+- `algorithm`: 只清除單一算法快取
+- `full`: 只清除完整回測快取
+- `rolling`: 只清除滾動回測快取
+- `optimize`: 只清除優化結果快取
+
+**成功回應** (200):
+```json
+{
+  "message": "已清除 30 筆回測快取",
+  "cleared": {
+    "algorithm": 22,
+    "full": 4,
+    "rolling": 2,
+    "optimize": 2,
+    "total": 30
+  }
+}
+```
+
+---
+
+### POST /cache/backtest/clear-outdated
+
+**說明**: 清除過期的回測快取（資料版本不符的快取）
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super" | null
+}
+```
+
+**參數**:
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| type | string | 否 | 彩種類型，不填則清除所有彩種的過期快取 |
+
+**成功回應** (200):
+```json
+{
+  "message": "已清除 12 筆過期回測快取",
+  "cleared": {
+    "algorithm": 8,
+    "full": 2,
+    "rolling": 1,
+    "optimize": 1,
+    "total": 12
+  }
+}
+```
+
+---
+
+## 回測快取機制說明
+
+### 快取策略
+
+1. **資料版本追蹤**: 快取 key 包含 `data_version`（最新期數 + 資料筆數），確保新資料加入後自動失效
+2. **分層快取**:
+   - 個別算法結果（最常使用）
+   - 完整回測報告
+   - 滾動回測結果
+   - 參數優化結果
+3. **自動重算**: 快取 miss 時自動計算並儲存
+
+### 回應欄位
+
+回測 API 回應會包含以下快取相關欄位：
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| from_cache | boolean | 是否來自快取 |
+| cached_at | string | 快取建立時間 |
+| computation_time_ms | integer | 計算耗時（毫秒）|
+
+### 效能比較
+
+| 情境 | 首次計算 | 快取讀取 |
+|------|----------|----------|
+| 完整回測 (50期) | ~30-60 秒 | <1 秒 |
+| 滾動回測 (100期) | ~2-3 分鐘 | <1 秒 |
+| 參數優化 | ~1-2 分鐘 | <1 秒 |
+
+---
+
 ## 回應欄位說明
 
 ### 預測結果物件

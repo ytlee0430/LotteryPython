@@ -3,13 +3,435 @@ Backtesting and Analysis Module
 
 Provides historical performance analysis for lottery prediction algorithms,
 including hit rate calculation and number distribution analysis.
+
+Includes SQLite-based caching for faster repeated backtest queries.
 """
 
 import pandas as pd
 import numpy as np
+import sqlite3
+import json
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from collections import Counter
+from datetime import datetime
+
+
+# ============== Backtest Cache Manager ==============
+
+class BacktestCacheManager:
+    """
+    Manages SQLite-based caching for backtest results.
+
+    Cache keys are based on:
+    - lottery_type: 'big' or 'super'
+    - algorithm: Algorithm name
+    - periods: Number of periods tested
+    - data_version: Hash of latest period (invalidates cache when new data arrives)
+    """
+
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or Path(__file__).parent.parent / "lotterypython" / "lottery.db"
+        self._init_database()
+
+    def _init_database(self):
+        """Create cache tables if they don't exist."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Table for individual algorithm backtest results
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_algorithm_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT UNIQUE NOT NULL,
+                    lottery_type TEXT NOT NULL,
+                    algorithm TEXT NOT NULL,
+                    periods INTEGER NOT NULL,
+                    data_version TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    computation_time_ms INTEGER
+                )
+            ''')
+
+            # Table for full backtest results (all algorithms)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_full_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT UNIQUE NOT NULL,
+                    lottery_type TEXT NOT NULL,
+                    periods INTEGER NOT NULL,
+                    data_version TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    computation_time_ms INTEGER
+                )
+            ''')
+
+            # Table for rolling backtest results
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_rolling_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT UNIQUE NOT NULL,
+                    lottery_type TEXT NOT NULL,
+                    window_size INTEGER NOT NULL,
+                    total_periods INTEGER NOT NULL,
+                    data_version TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    computation_time_ms INTEGER
+                )
+            ''')
+
+            # Table for optimization results
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_optimize_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT UNIQUE NOT NULL,
+                    lottery_type TEXT NOT NULL,
+                    min_window INTEGER NOT NULL,
+                    max_window INTEGER NOT NULL,
+                    step INTEGER NOT NULL,
+                    test_periods INTEGER NOT NULL,
+                    data_version TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    computation_time_ms INTEGER
+                )
+            ''')
+
+            # Create indexes for faster lookups
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_algo_cache_key ON backtest_algorithm_cache(cache_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_full_cache_key ON backtest_full_cache(cache_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_rolling_cache_key ON backtest_rolling_cache(cache_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_optimize_cache_key ON backtest_optimize_cache(cache_key)')
+
+            conn.commit()
+
+    def _get_data_version(self, lottery_type: str) -> str:
+        """
+        Get a version string based on the latest period in the CSV data.
+        This ensures cache is invalidated when new lottery data is added.
+        """
+        csv_file = Path(__file__).parent.parent / "lotterypython" / f"{lottery_type}_sequence.csv"
+        if not csv_file.exists():
+            return "no_data"
+
+        try:
+            df = pd.read_csv(csv_file)
+            if df.empty:
+                return "empty"
+
+            # Use latest period and row count as version
+            latest_period = str(df.iloc[-1].get('Period', ''))
+            row_count = len(df)
+            return f"{latest_period}_{row_count}"
+        except Exception:
+            return "error"
+
+    def _generate_cache_key(self, *args) -> str:
+        """Generate a unique cache key from arguments."""
+        key_string = "_".join(str(arg) for arg in args)
+        return hashlib.md5(key_string.encode()).hexdigest()
+
+    # ---- Algorithm Cache ----
+
+    def get_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int) -> Optional[Dict]:
+        """Get cached algorithm backtest result."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT result_json, created_at FROM backtest_algorithm_cache WHERE cache_key = ?',
+                (cache_key,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                result = json.loads(row['result_json'])
+                result['from_cache'] = True
+                result['cached_at'] = row['created_at']
+                return result
+
+        return None
+
+    def save_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int,
+                             result: Dict, computation_time_ms: int = 0):
+        """Save algorithm backtest result to cache."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version)
+
+        # Remove cache metadata before saving
+        result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO backtest_algorithm_cache
+                (cache_key, lottery_type, algorithm, periods, data_version, result_json, computation_time_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (cache_key, lottery_type, algorithm, periods, data_version,
+                  json.dumps(result_to_save, ensure_ascii=False), computation_time_ms))
+            conn.commit()
+
+    # ---- Full Backtest Cache ----
+
+    def get_full_cache(self, lottery_type: str, periods: int) -> Optional[Dict]:
+        """Get cached full backtest result."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT result_json, created_at FROM backtest_full_cache WHERE cache_key = ?',
+                (cache_key,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                result = json.loads(row['result_json'])
+                result['from_cache'] = True
+                result['cached_at'] = row['created_at']
+                return result
+
+        return None
+
+    def save_full_cache(self, lottery_type: str, periods: int,
+                        result: Dict, computation_time_ms: int = 0):
+        """Save full backtest result to cache."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version)
+
+        result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO backtest_full_cache
+                (cache_key, lottery_type, periods, data_version, result_json, computation_time_ms)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (cache_key, lottery_type, periods, data_version,
+                  json.dumps(result_to_save, ensure_ascii=False), computation_time_ms))
+            conn.commit()
+
+    # ---- Rolling Backtest Cache ----
+
+    def get_rolling_cache(self, lottery_type: str, window_size: int, total_periods: int) -> Optional[Dict]:
+        """Get cached rolling backtest result."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('rolling', lottery_type, window_size, total_periods, data_version)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT result_json, created_at FROM backtest_rolling_cache WHERE cache_key = ?',
+                (cache_key,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                result = json.loads(row['result_json'])
+                result['from_cache'] = True
+                result['cached_at'] = row['created_at']
+                return result
+
+        return None
+
+    def save_rolling_cache(self, lottery_type: str, window_size: int, total_periods: int,
+                           result: Dict, computation_time_ms: int = 0):
+        """Save rolling backtest result to cache."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('rolling', lottery_type, window_size, total_periods, data_version)
+
+        result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO backtest_rolling_cache
+                (cache_key, lottery_type, window_size, total_periods, data_version, result_json, computation_time_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (cache_key, lottery_type, window_size, total_periods, data_version,
+                  json.dumps(result_to_save, ensure_ascii=False), computation_time_ms))
+            conn.commit()
+
+    # ---- Optimization Cache ----
+
+    def get_optimize_cache(self, lottery_type: str, min_window: int, max_window: int,
+                           step: int, test_periods: int) -> Optional[Dict]:
+        """Get cached optimization result."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('optimize', lottery_type, min_window, max_window,
+                                             step, test_periods, data_version)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                'SELECT result_json, created_at FROM backtest_optimize_cache WHERE cache_key = ?',
+                (cache_key,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                result = json.loads(row['result_json'])
+                result['from_cache'] = True
+                result['cached_at'] = row['created_at']
+                return result
+
+        return None
+
+    def save_optimize_cache(self, lottery_type: str, min_window: int, max_window: int,
+                            step: int, test_periods: int, result: Dict, computation_time_ms: int = 0):
+        """Save optimization result to cache."""
+        data_version = self._get_data_version(lottery_type)
+        cache_key = self._generate_cache_key('optimize', lottery_type, min_window, max_window,
+                                             step, test_periods, data_version)
+
+        result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO backtest_optimize_cache
+                (cache_key, lottery_type, min_window, max_window, step, test_periods, data_version, result_json, computation_time_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (cache_key, lottery_type, min_window, max_window, step, test_periods, data_version,
+                  json.dumps(result_to_save, ensure_ascii=False), computation_time_ms))
+            conn.commit()
+
+    # ---- Cache Management ----
+
+    def get_cache_stats(self) -> Dict:
+        """Get statistics about cached data."""
+        stats = {
+            'algorithm_cache': {'count': 0, 'total_size_kb': 0},
+            'full_cache': {'count': 0, 'total_size_kb': 0},
+            'rolling_cache': {'count': 0, 'total_size_kb': 0},
+            'optimize_cache': {'count': 0, 'total_size_kb': 0}
+        }
+
+        with sqlite3.connect(self.db_path) as conn:
+            # Algorithm cache stats
+            cursor = conn.execute('SELECT COUNT(*), SUM(LENGTH(result_json)) FROM backtest_algorithm_cache')
+            row = cursor.fetchone()
+            stats['algorithm_cache']['count'] = row[0] or 0
+            stats['algorithm_cache']['total_size_kb'] = round((row[1] or 0) / 1024, 2)
+
+            # Full cache stats
+            cursor = conn.execute('SELECT COUNT(*), SUM(LENGTH(result_json)) FROM backtest_full_cache')
+            row = cursor.fetchone()
+            stats['full_cache']['count'] = row[0] or 0
+            stats['full_cache']['total_size_kb'] = round((row[1] or 0) / 1024, 2)
+
+            # Rolling cache stats
+            cursor = conn.execute('SELECT COUNT(*), SUM(LENGTH(result_json)) FROM backtest_rolling_cache')
+            row = cursor.fetchone()
+            stats['rolling_cache']['count'] = row[0] or 0
+            stats['rolling_cache']['total_size_kb'] = round((row[1] or 0) / 1024, 2)
+
+            # Optimize cache stats
+            cursor = conn.execute('SELECT COUNT(*), SUM(LENGTH(result_json)) FROM backtest_optimize_cache')
+            row = cursor.fetchone()
+            stats['optimize_cache']['count'] = row[0] or 0
+            stats['optimize_cache']['total_size_kb'] = round((row[1] or 0) / 1024, 2)
+
+        stats['total_entries'] = sum(s['count'] for s in stats.values() if isinstance(s, dict))
+        stats['total_size_kb'] = round(sum(s['total_size_kb'] for s in stats.values() if isinstance(s, dict)), 2)
+
+        return stats
+
+    def clear_cache(self, cache_type: str = 'all') -> Dict:
+        """
+        Clear cached data.
+
+        Args:
+            cache_type: 'all', 'algorithm', 'full', 'rolling', or 'optimize'
+
+        Returns:
+            Dict with number of entries cleared
+        """
+        cleared = {}
+
+        with sqlite3.connect(self.db_path) as conn:
+            if cache_type in ['all', 'algorithm']:
+                cursor = conn.execute('DELETE FROM backtest_algorithm_cache')
+                cleared['algorithm'] = cursor.rowcount
+
+            if cache_type in ['all', 'full']:
+                cursor = conn.execute('DELETE FROM backtest_full_cache')
+                cleared['full'] = cursor.rowcount
+
+            if cache_type in ['all', 'rolling']:
+                cursor = conn.execute('DELETE FROM backtest_rolling_cache')
+                cleared['rolling'] = cursor.rowcount
+
+            if cache_type in ['all', 'optimize']:
+                cursor = conn.execute('DELETE FROM backtest_optimize_cache')
+                cleared['optimize'] = cursor.rowcount
+
+            conn.commit()
+
+        cleared['total'] = sum(cleared.values())
+        return cleared
+
+    def clear_outdated_cache(self, lottery_type: str = None) -> Dict:
+        """
+        Clear cache entries that don't match current data version.
+
+        Args:
+            lottery_type: 'big', 'super', or None for both
+
+        Returns:
+            Dict with number of outdated entries cleared
+        """
+        types_to_check = [lottery_type] if lottery_type else ['big', 'super']
+        cleared = {'algorithm': 0, 'full': 0, 'rolling': 0, 'optimize': 0}
+
+        with sqlite3.connect(self.db_path) as conn:
+            for lt in types_to_check:
+                current_version = self._get_data_version(lt)
+
+                cursor = conn.execute(
+                    'DELETE FROM backtest_algorithm_cache WHERE lottery_type = ? AND data_version != ?',
+                    (lt, current_version)
+                )
+                cleared['algorithm'] += cursor.rowcount
+
+                cursor = conn.execute(
+                    'DELETE FROM backtest_full_cache WHERE lottery_type = ? AND data_version != ?',
+                    (lt, current_version)
+                )
+                cleared['full'] += cursor.rowcount
+
+                cursor = conn.execute(
+                    'DELETE FROM backtest_rolling_cache WHERE lottery_type = ? AND data_version != ?',
+                    (lt, current_version)
+                )
+                cleared['rolling'] += cursor.rowcount
+
+                cursor = conn.execute(
+                    'DELETE FROM backtest_optimize_cache WHERE lottery_type = ? AND data_version != ?',
+                    (lt, current_version)
+                )
+                cleared['optimize'] += cursor.rowcount
+
+            conn.commit()
+
+        cleared['total'] = sum(cleared.values())
+        return cleared
+
+
+# Global cache manager instance
+_cache_manager: Optional[BacktestCacheManager] = None
+
+
+def get_cache_manager() -> BacktestCacheManager:
+    """Get or create the global cache manager instance."""
+    global _cache_manager
+    if _cache_manager is None:
+        _cache_manager = BacktestCacheManager()
+    return _cache_manager
+
+
+# ============== Original Backtest Functions ==============
 
 # Import prediction algorithms
 from predict.lotto_predict_hot_50 import predict_hot50
@@ -185,16 +607,28 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
     }
 
 
-def run_full_backtest(lottery_type: str = 'big', periods: int = 50) -> Dict:
+def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
+                      use_cache: bool = True) -> Dict:
     """Run backtest for all supported algorithms.
 
     Args:
         lottery_type: 'big' or 'super'
         periods: Number of periods to backtest
+        use_cache: Whether to use cached results (default True)
 
     Returns:
         Dict with results for all algorithms
     """
+    import time
+    start_time = time.time()
+
+    # Check cache first
+    if use_cache:
+        cache_manager = get_cache_manager()
+        cached = cache_manager.get_full_cache(lottery_type, periods)
+        if cached:
+            return cached
+
     df = load_historical_data(lottery_type)
     if df.empty:
         return {"error": "No historical data found"}
@@ -205,7 +639,22 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50) -> Dict:
     results = {}
 
     for algo in algorithms:
-        results[algo] = backtest_algorithm(df, algo, periods, lottery_type)
+        # Check individual algorithm cache
+        if use_cache:
+            algo_cached = cache_manager.get_algorithm_cache(lottery_type, algo, periods)
+            if algo_cached:
+                results[algo] = algo_cached
+                continue
+
+        algo_start = time.time()
+        algo_result = backtest_algorithm(df, algo, periods, lottery_type)
+        algo_time_ms = int((time.time() - algo_start) * 1000)
+
+        results[algo] = algo_result
+
+        # Save individual algorithm result to cache
+        if use_cache and 'error' not in algo_result:
+            cache_manager.save_algorithm_cache(lottery_type, algo, periods, algo_result, algo_time_ms)
 
     # Calculate ranking by average hits
     rankings = []
@@ -219,13 +668,22 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50) -> Dict:
 
     rankings.sort(key=lambda x: x['average_hits'], reverse=True)
 
-    return {
+    total_time_ms = int((time.time() - start_time) * 1000)
+
+    result = {
         'lottery_type': lottery_type,
         'periods_tested': periods,
         'total_periods_available': len(df),
         'algorithms': results,
-        'ranking': rankings
+        'ranking': rankings,
+        'computation_time_ms': total_time_ms
     }
+
+    # Save full result to cache
+    if use_cache:
+        cache_manager.save_full_cache(lottery_type, periods, result, total_time_ms)
+
+    return result
 
 
 def analyze_number_distribution(df: pd.DataFrame, periods: int = 100) -> Dict:
@@ -352,7 +810,7 @@ def get_distribution_analysis(lottery_type: str = 'big', periods: int = 100) -> 
 
 
 def rolling_backtest(lottery_type: str = 'big', window_size: int = 20,
-                     total_periods: int = 100) -> Dict:
+                     total_periods: int = 100, use_cache: bool = True) -> Dict:
     """
     Run rolling backtest to show performance over time.
 
@@ -362,10 +820,21 @@ def rolling_backtest(lottery_type: str = 'big', window_size: int = 20,
         lottery_type: 'big' or 'super'
         window_size: Size of each test window
         total_periods: Total periods to analyze
+        use_cache: Whether to use cached results (default True)
 
     Returns:
         Dict with rolling performance data for visualization
     """
+    import time
+    start_time = time.time()
+
+    # Check cache first
+    if use_cache:
+        cache_manager = get_cache_manager()
+        cached = cache_manager.get_rolling_cache(lottery_type, window_size, total_periods)
+        if cached:
+            return cached
+
     df = load_historical_data(lottery_type)
     if df.empty or len(df) < total_periods + 50:
         return {"error": "Not enough historical data"}
@@ -432,20 +901,30 @@ def rolling_backtest(lottery_type: str = 'big', window_size: int = 20,
                                     key=lambda i: valid_results[i]['average_hits']) + 1
             }
 
-    return {
+    total_time_ms = int((time.time() - start_time) * 1000)
+
+    result = {
         'lottery_type': lottery_type,
         'window_size': window_size,
         'total_periods': total_periods,
         'num_windows': num_windows,
         'window_labels': window_labels,
         'rolling_results': rolling_results,
-        'algorithm_summary': algorithm_summary
+        'algorithm_summary': algorithm_summary,
+        'computation_time_ms': total_time_ms
     }
+
+    # Save to cache
+    if use_cache:
+        cache_manager.save_rolling_cache(lottery_type, window_size, total_periods, result, total_time_ms)
+
+    return result
 
 
 def optimize_window_size(lottery_type: str = 'big',
                          min_window: int = 20, max_window: int = 100,
-                         step: int = 10, test_periods: int = 50) -> Dict:
+                         step: int = 10, test_periods: int = 50,
+                         use_cache: bool = True) -> Dict:
     """
     Find optimal window size for Hot/Cold algorithms.
 
@@ -457,10 +936,21 @@ def optimize_window_size(lottery_type: str = 'big',
         max_window: Maximum window size to test
         step: Step size between tests
         test_periods: Number of periods to test each window
+        use_cache: Whether to use cached results (default True)
 
     Returns:
         Dict with optimization results
     """
+    import time
+    start_time = time.time()
+
+    # Check cache first
+    if use_cache:
+        cache_manager = get_cache_manager()
+        cached = cache_manager.get_optimize_cache(lottery_type, min_window, max_window, step, test_periods)
+        if cached:
+            return cached
+
     df = load_historical_data(lottery_type)
     if df.empty:
         return {"error": "No historical data found"}
@@ -532,7 +1022,9 @@ def optimize_window_size(lottery_type: str = 'big',
     optimal_hot = max(hot_results, key=lambda x: x['average_hits']) if hot_results else None
     optimal_cold = max(cold_results, key=lambda x: x['average_hits']) if cold_results else None
 
-    return {
+    total_time_ms = int((time.time() - start_time) * 1000)
+
+    result = {
         'lottery_type': lottery_type,
         'test_periods': test_periods,
         'window_range': {'min': min_window, 'max': max_window, 'step': step},
@@ -542,8 +1034,32 @@ def optimize_window_size(lottery_type: str = 'big',
             'hot_avg_hits': optimal_hot['average_hits'] if optimal_hot else 0,
             'cold_window': optimal_cold['window'] if optimal_cold else 50,
             'cold_avg_hits': optimal_cold['average_hits'] if optimal_cold else 0
-        }
+        },
+        'computation_time_ms': total_time_ms
     }
+
+    # Save to cache
+    if use_cache:
+        cache_manager.save_optimize_cache(lottery_type, min_window, max_window, step, test_periods, result, total_time_ms)
+
+    return result
+
+
+# ============== Cache API Functions ==============
+
+def get_backtest_cache_stats() -> Dict:
+    """Get cache statistics for display."""
+    return get_cache_manager().get_cache_stats()
+
+
+def clear_backtest_cache(cache_type: str = 'all') -> Dict:
+    """Clear backtest cache."""
+    return get_cache_manager().clear_cache(cache_type)
+
+
+def clear_outdated_backtest_cache(lottery_type: str = None) -> Dict:
+    """Clear outdated cache entries."""
+    return get_cache_manager().clear_outdated_cache(lottery_type)
 
 
 if __name__ == "__main__":
