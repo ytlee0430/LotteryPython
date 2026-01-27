@@ -734,6 +734,153 @@ def auto_tune_weights():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ============ Daily Automation APIs ============
+
+# Store last automation run status
+_automation_status = {
+    "last_run": None,
+    "last_status": None,
+    "last_lottery_type": None,
+    "is_running": False
+}
+
+@app.route('/automation/run', methods=['POST'])
+@login_required
+def run_automation():
+    """Trigger daily automation workflow.
+
+    JSON body:
+        type: 'big', 'super', or 'auto' (default: 'auto')
+        skip_update: bool (default: false)
+        skip_backtest: bool (default: false)
+        skip_predict: bool (default: false)
+        skip_autotune: bool (default: false)
+        dry_run: bool (default: false)
+    """
+    global _automation_status
+
+    if _automation_status["is_running"]:
+        return jsonify({"error": "Automation is already running"}), 409
+
+    data = request.get_json() or {}
+    lottery_type = data.get('type', 'auto')
+    skip_update = data.get('skip_update', False)
+    skip_backtest = data.get('skip_backtest', False)
+    skip_predict = data.get('skip_predict', False)
+    skip_autotune = data.get('skip_autotune', False)
+    dry_run = data.get('dry_run', False)
+
+    # Determine lottery type
+    if lottery_type == 'auto':
+        from datetime import datetime
+        weekday = datetime.now().weekday()
+        if weekday in [1, 4]:  # Tuesday, Friday
+            lottery_type = 'big'
+        elif weekday in [0, 3]:  # Monday, Thursday
+            lottery_type = 'super'
+        else:
+            return jsonify({
+                "error": "Today is not a draw day. Use type='big' or 'super' to force."
+            }), 400
+    elif lottery_type not in ['big', 'super']:
+        return jsonify({"error": "Invalid lottery type. Use: big, super, or auto"}), 400
+
+    try:
+        _automation_status["is_running"] = True
+
+        # Import and run automation
+        from scripts.daily_automation import DailyAutomation
+
+        automation = DailyAutomation(
+            lottery_type=lottery_type,
+            dry_run=dry_run,
+            verbose=True
+        )
+
+        results = automation.run(
+            skip_update=skip_update,
+            skip_backtest=skip_backtest,
+            skip_predict=skip_predict,
+            skip_autotune=skip_autotune
+        )
+
+        # Update status
+        from datetime import datetime
+        _automation_status["last_run"] = datetime.now().isoformat()
+        _automation_status["last_status"] = results.get("status")
+        _automation_status["last_lottery_type"] = lottery_type
+        _automation_status["is_running"] = False
+
+        return jsonify(results)
+
+    except Exception as e:
+        _automation_status["is_running"] = False
+        _automation_status["last_status"] = "error"
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/automation/status', methods=['GET'])
+@login_required
+def get_automation_status():
+    """Get automation status.
+
+    Returns:
+        last_run: ISO timestamp of last run
+        last_status: 'success', 'partial', or 'error'
+        last_lottery_type: 'big' or 'super'
+        is_running: bool
+        next_scheduled: Estimated next run time
+    """
+    from datetime import datetime, timedelta
+
+    # Calculate next scheduled run
+    now = datetime.now()
+    weekday = now.weekday()
+
+    # Find next draw day
+    if weekday == 0:  # Monday
+        next_draw_day = now  # Today (super)
+        next_type = 'super'
+    elif weekday == 1:  # Tuesday
+        next_draw_day = now  # Today (big)
+        next_type = 'big'
+    elif weekday == 2:  # Wednesday
+        next_draw_day = now + timedelta(days=1)  # Thursday (super)
+        next_type = 'super'
+    elif weekday == 3:  # Thursday
+        next_draw_day = now  # Today (super)
+        next_type = 'super'
+    elif weekday == 4:  # Friday
+        next_draw_day = now  # Today (big)
+        next_type = 'big'
+    elif weekday == 5:  # Saturday
+        next_draw_day = now + timedelta(days=2)  # Monday (super)
+        next_type = 'super'
+    else:  # Sunday
+        next_draw_day = now + timedelta(days=1)  # Monday (super)
+        next_type = 'super'
+
+    # Set time to 21:30
+    next_scheduled = next_draw_day.replace(hour=21, minute=30, second=0, microsecond=0)
+    if next_scheduled < now:
+        # Already past today's scheduled time, move to next draw day
+        if weekday in [0, 1]:
+            next_scheduled += timedelta(days=3 if weekday == 0 else 2)
+        elif weekday in [3, 4]:
+            next_scheduled += timedelta(days=3 if weekday == 3 else 3)
+        else:
+            pass  # Already calculated correctly
+
+    return jsonify({
+        "last_run": _automation_status["last_run"],
+        "last_status": _automation_status["last_status"],
+        "last_lottery_type": _automation_status["last_lottery_type"],
+        "is_running": _automation_status["is_running"],
+        "next_scheduled": next_scheduled.isoformat(),
+        "next_lottery_type": next_type
+    })
+
+
 # ============ Gemini Config APIs ============
 
 @app.route('/config/gemini', methods=['GET'])

@@ -819,6 +819,84 @@ fetch('/predict', {
 
 ---
 
+## 每日自動化端點
+
+### POST /automation/run
+
+**說明**: 觸發每日自動化工作流程
+
+**請求格式**:
+```json
+{
+  "type": "big" | "super" | "auto",
+  "skip_update": false,
+  "skip_backtest": false,
+  "skip_predict": false,
+  "skip_autotune": false,
+  "dry_run": false
+}
+```
+
+**參數**:
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| type | string | 否 | 彩種類型，'auto' 自動判斷今日開獎彩種 |
+| skip_update | bool | 否 | 跳過資料更新步驟 |
+| skip_backtest | bool | 否 | 跳過回測步驟 |
+| skip_predict | bool | 否 | 跳過預測步驟 |
+| skip_autotune | bool | 否 | 跳過自動調參步驟 |
+| dry_run | bool | 否 | 測試模式，不實際寫入 |
+
+**成功回應** (200):
+```json
+{
+  "status": "success",
+  "lottery_type": "big",
+  "timestamp": "2026-01-24T21:35:25+08:00",
+  "duration_seconds": 325,
+  "steps": {
+    "update": {"status": "success", "new_records": 1},
+    "clear_cache": {"status": "success", "cleared": 15},
+    "backtest": {"status": "success", "cached": true},
+    "rolling": {"status": "success", "cached": true},
+    "optimize": {"status": "success", "cached": true},
+    "autotune": {"status": "success", "weights_updated": true},
+    "predict": {"status": "success", "algorithms": 11}
+  },
+  "cache_stats": {
+    "total_entries": 45,
+    "total_size_kb": 520.3
+  }
+}
+```
+
+**錯誤回應** (409 - 已在執行中):
+```json
+{
+  "error": "Automation is already running"
+}
+```
+
+---
+
+### GET /automation/status
+
+**說明**: 取得自動化執行狀態
+
+**成功回應** (200):
+```json
+{
+  "last_run": "2026-01-24T21:35:25+08:00",
+  "last_status": "success",
+  "last_lottery_type": "big",
+  "is_running": false,
+  "next_scheduled": "2026-01-27T21:30:00+08:00",
+  "next_lottery_type": "super"
+}
+```
+
+---
+
 ## 算法設定端點
 
 ### GET /config/algorithm

@@ -239,6 +239,58 @@ Removes cache entries that don't match current data version (after new lottery d
 | Rolling backtest (100 periods) | ~2-3min | <1s |
 | Parameter optimization | ~1-2min | <1s |
 
+## Daily Automation
+
+The project includes a comprehensive daily automation system that runs:
+1. Update lottery data
+2. Clear outdated cache
+3. Run backtests (with caching)
+4. Auto-tune algorithm parameters
+5. Run predictions
+6. Save results to Google Sheets
+
+### Manual Execution
+
+```bash
+# Auto-detect lottery type based on today
+python scripts/daily_automation.py
+
+# Specify lottery type
+python scripts/daily_automation.py --type big
+
+# Test mode (no writes)
+python scripts/daily_automation.py --dry-run
+```
+
+### API Trigger
+
+```bash
+# Trigger via API
+curl -X POST http://localhost:3000/automation/run \
+  -H "Content-Type: application/json" \
+  -d '{"type": "big"}'
+
+# Check status
+curl http://localhost:3000/automation/status
+```
+
+### macOS launchd Setup
+
+```bash
+# Copy and load the plist
+cp scripts/com.lotterypython.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.lotterypython.daily.plist
+```
+
+### Linux Crontab Setup
+
+```bash
+# Add to crontab (runs at 21:30 daily)
+30 21 * * * cd /path/to/LotteryPython && python3 scripts/daily_automation.py >> logs/cron.log 2>&1
+```
+
+See [docs/daily-automation.md](docs/daily-automation.md) for full documentation.
+
 ## Docker
 
 A `Dockerfile` and `docker-compose.yml` are included for running the web application with Nginx.

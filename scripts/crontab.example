@@ -1,0 +1,46 @@
+# LotteryPython Daily Automation Crontab Configuration
+#
+# To install, run: crontab -e
+# Then paste the appropriate line below.
+#
+# ============================================================
+
+# Option 1: Run every day at 21:30 (auto-detect lottery type)
+# Recommended for most users
+30 21 * * * cd /path/to/LotteryPython && python3 scripts/daily_automation.py --type auto >> logs/cron.log 2>&1
+
+# Option 2: Run only on draw days
+# Monday and Thursday at 21:30 for Super Lottery (威力彩)
+30 21 * * 1,4 cd /path/to/LotteryPython && python3 scripts/daily_automation.py --type super >> logs/cron.log 2>&1
+
+# Tuesday and Friday at 21:30 for Big Lottery (大樂透)
+30 21 * * 2,5 cd /path/to/LotteryPython && python3 scripts/daily_automation.py --type big >> logs/cron.log 2>&1
+
+# ============================================================
+# Testing / Debugging
+# ============================================================
+
+# Dry run every hour for testing
+# 0 * * * * cd /path/to/LotteryPython && python3 scripts/daily_automation.py --dry-run >> logs/cron_test.log 2>&1
+
+# Run with verbose logging
+# 30 21 * * * cd /path/to/LotteryPython && python3 scripts/daily_automation.py --verbose >> logs/cron.log 2>&1
+
+# ============================================================
+# Notes:
+# ============================================================
+#
+# 1. Replace /path/to/LotteryPython with your actual project path
+#
+# 2. Make sure python3 is in your PATH, or use full path:
+#    /usr/local/bin/python3 or /usr/bin/python3
+#
+# 3. If using virtual environment:
+#    30 21 * * * cd /path/to/LotteryPython && source venv/bin/activate && python scripts/daily_automation.py >> logs/cron.log 2>&1
+#
+# 4. To check cron logs on macOS:
+#    grep CRON /var/log/system.log
+#
+# 5. To check cron logs on Linux:
+#    grep CRON /var/log/syslog
+#

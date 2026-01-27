@@ -85,6 +85,13 @@ LotteryPython 是一個台灣彩券資料分析與預測平台，整合網頁爬
 ### 5. 自動化排程
 - macOS launchd / cron 整合
 - 依開獎日自動執行更新與預測
+- **每日自動化腳本**: `scripts/daily_automation.py`
+  - 自動判斷今日開獎彩種
+  - 執行完整工作流程：更新資料 → 清除過期快取 → 回測 → 參數優化 → 預測 → 儲存結果
+  - 支援 dry-run 測試模式
+  - 產生執行日誌到 `logs/`
+- **API 觸發**: `/automation/run` 手動觸發、`/automation/status` 查看狀態
+- **設定檔**: `scripts/com.lotterypython.daily.plist` (macOS)、`scripts/crontab.example` (Linux)
 
 ### 10. 回測與分析系統
 - **完整回測**: 評估所有預測算法的歷史表現
