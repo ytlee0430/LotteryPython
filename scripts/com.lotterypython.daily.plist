@@ -12,7 +12,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>cd /Users/Bruce/git/LotteryPython && /usr/bin/python3 scripts/daily_automation.py --type auto 2>&1 | tee -a logs/launchd.log</string>
+        <string>cd /Users/Bruce/git/LotteryPython && source .venv/bin/activate && python scripts/daily_automation.py --type auto 2>&1 | tee -a logs/launchd.log</string>
     </array>
 
     <key>StartCalendarInterval</key>

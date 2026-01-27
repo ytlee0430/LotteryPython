@@ -293,7 +293,13 @@ class DailyAutomation:
             return True
 
         try:
-            new_weights = update_weights_from_backtest(self.lottery_type, self.backtest_periods)
+            # Run backtest first to get results for auto-tune
+            backtest_results = run_full_backtest(self.lottery_type, self.backtest_periods, use_cache=True)
+
+            if 'error' in backtest_results:
+                raise Exception(backtest_results['error'])
+
+            new_weights = update_weights_from_backtest(backtest_results)
 
             self.log_step(6, 7, "Weights updated")
             if self.verbose:
@@ -321,17 +327,39 @@ class DailyAutomation:
             return True
 
         try:
+            # Load data first
+            from predict.backtest import load_historical_data
+            df = load_historical_data(self.lottery_type)
+
+            if df.empty:
+                raise Exception("No historical data available")
+
             # Run predictions
-            predictions = run_predictions(self.lottery_type)
+            predictions = run_predictions(df)
             num_algorithms = len(predictions)
 
             self.log_step(7, 7, f"Predictions completed ({num_algorithms} algorithms)")
 
-            # Save to Google Sheets
+            # Save to Google Sheets - convert dict format to tuple format
             try:
-                append_analysis_results(predictions, self.lottery_type)
-                self.logger.info("  Results saved to Google Sheets")
-                saved_to_sheets = True
+                # Convert predictions dict to list of tuples (algorithm, period, numbers, special)
+                prediction_tuples = []
+                for algo_name, result in predictions.items():
+                    if isinstance(result, dict) and 'error' not in result:
+                        prediction_tuples.append((
+                            algo_name,
+                            result.get('next_period', ''),
+                            result.get('numbers', []),
+                            result.get('special', 0)
+                        ))
+
+                if prediction_tuples:
+                    append_analysis_results(prediction_tuples, self.lottery_type)
+                    self.logger.info("  Results saved to Google Sheets")
+                    saved_to_sheets = True
+                else:
+                    self.logger.warning("  No valid predictions to save")
+                    saved_to_sheets = False
             except Exception as e:
                 self.logger.warning(f"  Failed to save to Google Sheets: {e}")
                 saved_to_sheets = False
