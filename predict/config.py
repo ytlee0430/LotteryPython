@@ -134,8 +134,8 @@ def set_cold_window(window: int) -> bool:
 
 
 def set_ensemble_weight(algorithm: str, weight: float) -> bool:
-    """Set weight for a specific algorithm in ensemble."""
-    if 0 <= weight <= 5:
+    """Set weight for a specific algorithm in ensemble. Negative weights enable contrarian signals."""
+    if -3 <= weight <= 5:
         config = get_config()
         weights = config.get("ensemble_weights", {})
         weights[algorithm] = weight
@@ -188,6 +188,9 @@ def update_weights_from_backtest(backtest_results: Dict) -> Dict[str, float]:
 
         ensemble_name = algo_mapping.get(algo, algo)
         if ensemble_name in new_weights:
+            # Preserve manually-set negative weights (contrarian signals)
+            if new_weights[ensemble_name] < 0:
+                continue
             new_weights[ensemble_name] = round(weight, 2)
 
     update_config({"ensemble_weights": new_weights})
