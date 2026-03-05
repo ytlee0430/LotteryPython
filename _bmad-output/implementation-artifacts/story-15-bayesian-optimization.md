@@ -1,7 +1,7 @@
 # Story-15: Bayesian Weight Optimization（貝葉斯超參數優化）
 
 ## Status
-ready
+done
 
 ## Story
 **As a** LotteryPython power user,

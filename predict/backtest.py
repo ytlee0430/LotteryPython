@@ -896,7 +896,8 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
     from predict.config import (
         get_config, get_ensemble_weights, compute_softmax_weights,
         update_weights_from_backtest as _update_weights, get_decay_factor as _get_decay_factor,
-        get_validation_periods as _get_val_periods
+        get_validation_periods as _get_val_periods, get_optimizer_type as _get_opt_type,
+        get_bayesian_n_trials as _get_n_trials, get_bayesian_timeout as _get_timeout
     )
 
     config = get_config()
@@ -905,48 +906,69 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
     decay_factor = _get_decay_factor()
     val_periods = _get_val_periods()
     train_periods = max(periods - val_periods, 10)
+    optimizer_type = _get_opt_type()
 
     _autotune_logger.info(
         f"Running auto-tune for '{lottery_type}' | "
-        f"train={train_periods} val={val_periods} decay={decay_factor}"
+        f"train={train_periods} val={val_periods} decay={decay_factor} optimizer={optimizer_type}"
     )
 
-    # Step 1: Run backtest on training window only
-    backtest = run_full_backtest(lottery_type, train_periods, use_cache=True, decay_factor=decay_factor)
-    if "error" in backtest:
-        _autotune_logger.error(f"Auto-tune aborted: backtest error — {backtest['error']}")
-        return {"skipped": True, "reason": backtest["error"]}
-
-    # Step 2: Extract weighted_score per ensemble algo name
-    current_weights = get_ensemble_weights()
-    scores: Dict[str, float] = {}
-    for algo_result in backtest.get("ranking", []):
-        backtest_name = algo_result["algorithm"]
-        ensemble_name = _ALGO_NAME_MAP.get(backtest_name, backtest_name)
-        if ensemble_name not in current_weights:
-            continue
-        ws = algo_result.get("weighted_score", 0.0)
-        scores[ensemble_name] = ws
-
-    # Step 3: Skip if all scores are zero
-    if not scores or all(v == 0 for v in scores.values()):
-        _autotune_logger.warning(
-            "Auto-tune skipped: all algorithm weighted_scores are zero. "
-            "Run Story-11 backtest first to generate meaningful scores."
-        )
-        return {"skipped": True, "reason": "all_scores_zero", "scores": scores}
-
-    # Step 4: Filter out negative-weight algorithms (protected)
-    tuneable_scores = {k: v for k, v in scores.items() if current_weights.get(k, 1.0) >= 0}
-    if not tuneable_scores:
-        _autotune_logger.warning("Auto-tune skipped: no tuneable algorithms (all protected)")
-        return {"skipped": True, "reason": "all_protected", "scores": scores}
-
-    # Step 5: Compute softmax candidate weights
-    candidate_weights = compute_softmax_weights(tuneable_scores)
-
-    # Step 6: Walk-forward validation (Story-14)
     df = load_historical_data(lottery_type)
+    current_weights = get_ensemble_weights()
+
+    # ── Strategy selection ────────────────────────────────────────────────────
+    if optimizer_type == "bayesian":
+        try:
+            from predict.optimizer import BayesianWeightOptimizer
+            opt = BayesianWeightOptimizer(
+                df, lottery_type,
+                n_trials=_get_n_trials(),
+                timeout=_get_timeout(),
+                train_periods=train_periods,
+                val_periods=val_periods,
+                decay_factor=decay_factor,
+            )
+            candidate_weights = opt.optimize()
+            scores = {}  # Bayesian doesn't expose per-algo scores
+        except RuntimeError as e:
+            _autotune_logger.warning(f"Bayesian optimizer unavailable: {e} — falling back to softmax")
+            optimizer_type = "softmax"
+
+    if optimizer_type == "softmax":
+        # Step 1: Run backtest on training window only
+        backtest = run_full_backtest(lottery_type, train_periods, use_cache=True, decay_factor=decay_factor)
+        if "error" in backtest:
+            _autotune_logger.error(f"Auto-tune aborted: backtest error — {backtest['error']}")
+            return {"skipped": True, "reason": backtest["error"]}
+
+        # Step 2: Extract weighted_score per ensemble algo name
+        scores: Dict[str, float] = {}
+        for algo_result in backtest.get("ranking", []):
+            backtest_name = algo_result["algorithm"]
+            ensemble_name = _ALGO_NAME_MAP.get(backtest_name, backtest_name)
+            if ensemble_name not in current_weights:
+                continue
+            ws = algo_result.get("weighted_score", 0.0)
+            scores[ensemble_name] = ws
+
+        # Step 3: Skip if all scores are zero
+        if not scores or all(v == 0 for v in scores.values()):
+            _autotune_logger.warning(
+                "Auto-tune skipped: all algorithm weighted_scores are zero. "
+                "Run Story-11 backtest first to generate meaningful scores."
+            )
+            return {"skipped": True, "reason": "all_scores_zero", "scores": scores}
+
+        # Step 4: Filter out negative-weight algorithms (protected)
+        tuneable_scores = {k: v for k, v in scores.items() if current_weights.get(k, 1.0) >= 0}
+        if not tuneable_scores:
+            _autotune_logger.warning("Auto-tune skipped: no tuneable algorithms (all protected)")
+            return {"skipped": True, "reason": "all_protected", "scores": scores}
+
+        # Step 5: Compute softmax candidate weights
+        candidate_weights = compute_softmax_weights(tuneable_scores)
+
+    # ── Walk-forward validation (applies to both strategies) ─────────────────
     validator = WalkForwardValidator(
         train_periods=train_periods,
         val_periods=val_periods,
@@ -962,7 +984,7 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
         return {
             "skipped": True,
             "reason": "validation_failed",
-            "scores": scores,
+            "scores": locals().get("scores", {}),
             "val_result": {
                 "val_score": val_result.val_score,
                 "baseline_val_score": val_result.baseline_val_score,
@@ -970,7 +992,7 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
             },
         }
 
-    # Step 7: Apply weights
+    # ── Apply weights ─────────────────────────────────────────────────────────
     _autotune_logger.info(
         f"Walk-forward validation passed: {val_result.val_score:.4f} > {val_result.baseline_val_score:.4f}"
     )
@@ -979,8 +1001,9 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
 
     return {
         "skipped": False,
-        "scores": scores,
+        "scores": locals().get("scores", {}),
         "updated_weights": updated,
+        "optimizer": optimizer_type,
         "val_result": {
             "val_score": val_result.val_score,
             "baseline_val_score": val_result.baseline_val_score,

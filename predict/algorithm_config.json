@@ -18,5 +18,8 @@
   "auto_tune_enabled": true,
   "backtest_periods": 50,
   "backtest_decay_factor": 0.95,
-  "validation_periods": 10
+  "validation_periods": 10,
+  "optimizer": "softmax",
+  "bayesian_n_trials": 50,
+  "bayesian_timeout_seconds": 300
 }

@@ -13,7 +13,18 @@ cloudscraper = "*"
 beautifulsoup4 = "*"
 requests = "*"
 
+[tool.poetry.extras]
+optimize = ["optuna"]
+
+[tool.poetry.dependencies.optuna]
+version = ">=3.0.0"
+optional = true
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (neural network training, full backtest) — deselect with -m 'not slow'",
+]

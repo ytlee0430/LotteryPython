@@ -32,27 +32,27 @@ stories:
 
   - id: story-12
     title: "Performance-Based Auto-Tune"
-    status: in_progress
-    depends_on: [story-11]
+    status: done
+    notes: "compute_softmax_weights(), update_weights_from_backtest() with negative protection, run_autotune()"
 
   - id: story-13
     title: "Time-Decay Backtest Window"
-    status: pending
-    depends_on: [story-11]
+    status: done
+    notes: "decay_factor param in backtest_algorithm(), get_decay_factor(), settings slider"
 
   - id: story-14
     title: "Walk-Forward Validation"
-    status: pending
-    depends_on: [story-11, story-12]
+    status: done
+    notes: "WalkForwardValidator, ValidationResult, integrated in run_autotune(), /api/backtest returns validation"
 
   - id: story-15
     title: "Bayesian Weight Optimization"
-    status: pending
-    depends_on: [story-11, story-12, story-14]
+    status: done
+    notes: "predict/optimizer.py BayesianWeightOptimizer, strategy switching in run_autotune(), optional optuna dep"
 
 summary:
   total: 9
-  done: 4
-  in_progress: 1
-  pending: 4
+  done: 9
+  in_progress: 0
+  pending: 0
   blocked: 0

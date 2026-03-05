@@ -213,6 +213,24 @@ def get_validation_periods() -> int:
     return int(config.get("validation_periods", 10))
 
 
+def get_optimizer_type() -> str:
+    """Get weight optimizer strategy: 'softmax' or 'bayesian'."""
+    config = get_config()
+    return config.get("optimizer", "softmax")
+
+
+def get_bayesian_n_trials() -> int:
+    """Get number of optuna trials for Bayesian optimization."""
+    config = get_config()
+    return int(config.get("bayesian_n_trials", 50))
+
+
+def get_bayesian_timeout() -> int:
+    """Get timeout in seconds for Bayesian optimization."""
+    config = get_config()
+    return int(config.get("bayesian_timeout_seconds", 300))
+
+
 def reset_to_defaults() -> Dict[str, Any]:
     """Reset all configuration to defaults."""
     global _config
