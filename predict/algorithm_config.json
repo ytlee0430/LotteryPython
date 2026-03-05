@@ -2,19 +2,19 @@
   "hot_window": 50,
   "cold_window": 20,
   "ensemble_weights": {
-    "Hot-50": 1.9,
-    "Cold-50": -1.0,
-    "RandomForest": 1.6,
-    "GradientBoosting": 0.9,
-    "KNN": 1.8,
-    "XGBoost": 2.0,
-    "LSTM": 1.0,
-    "LSTM-RF": 1.6,
+    "Hot-50": 1.62,
+    "Cold-50": 1.91,
+    "RandomForest": 1.16,
+    "GradientBoosting": 0.88,
+    "KNN": 1.81,
+    "XGBoost": 1.44,
+    "LSTM": 1.53,
+    "LSTM-RF": 1.06,
     "Markov": 0.5,
     "Pattern": 2.0,
     "Astrology-Ziwei": 1,
     "Astrology-Zodiac": 1
   },
-  "auto_tune_enabled": false,
+  "auto_tune_enabled": true,
   "backtest_periods": 50
 }

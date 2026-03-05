@@ -721,6 +721,95 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
     return result
 
 
+import logging as _logging
+_autotune_logger = _logging.getLogger("predict.backtest.autotune")
+
+# Backtest algorithm name -> ensemble config name mapping
+_ALGO_NAME_MAP = {
+    "Hot50": "Hot-50",
+    "Cold50": "Cold-50",
+    "Markov": "Markov",
+    "Pattern": "Pattern",
+    "RandomForest": "RandomForest",
+    "GradientBoosting": "GradientBoosting",
+    "KNN": "KNN",
+    "XGBoost": "XGBoost",
+    "LSTM": "LSTM",
+    "LSTM-RF": "LSTM-RF",
+    "Ensemble": "Ensemble",
+}
+
+
+def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
+    """Auto-tune ensemble weights based on recent backtest weighted_scores.
+
+    Uses softmax normalization to compute new weights. Negative weights are
+    protected and never overwritten. If all algorithm scores are zero, skips
+    tune and logs a warning.
+
+    Args:
+        lottery_type: 'big' or 'super'
+        periods: Number of backtest periods (default: from config backtest_periods)
+
+    Returns:
+        Dict with 'updated_weights', 'skipped' (bool), 'scores' used
+    """
+    from predict.config import (
+        get_config, get_ensemble_weights, compute_softmax_weights,
+        update_weights_from_backtest as _update_weights
+    )
+
+    config = get_config()
+    if periods is None:
+        periods = config.get("backtest_periods", 50)
+
+    _autotune_logger.info(f"Running auto-tune for '{lottery_type}' over {periods} periods")
+
+    # Step 1: Run backtest to get weighted_scores per algorithm
+    backtest = run_full_backtest(lottery_type, periods, use_cache=True)
+    if "error" in backtest:
+        _autotune_logger.error(f"Auto-tune aborted: backtest error — {backtest['error']}")
+        return {"skipped": True, "reason": backtest["error"]}
+
+    # Step 2: Extract weighted_score per ensemble algo name
+    current_weights = get_ensemble_weights()
+    scores: Dict[str, float] = {}
+    for algo_result in backtest.get("ranking", []):
+        backtest_name = algo_result["algorithm"]
+        ensemble_name = _ALGO_NAME_MAP.get(backtest_name, backtest_name)
+        if ensemble_name not in current_weights:
+            continue
+        ws = algo_result.get("weighted_score", 0.0)
+        scores[ensemble_name] = ws
+
+    # Step 3: Skip if all scores are zero
+    if not scores or all(v == 0 for v in scores.values()):
+        _autotune_logger.warning(
+            "Auto-tune skipped: all algorithm weighted_scores are zero. "
+            "Run Story-11 backtest first to generate meaningful scores."
+        )
+        return {"skipped": True, "reason": "all_scores_zero", "scores": scores}
+
+    # Step 4: Filter out negative-weight algorithms (protected)
+    tuneable_scores = {k: v for k, v in scores.items() if current_weights.get(k, 1.0) >= 0}
+    if not tuneable_scores:
+        _autotune_logger.warning("Auto-tune skipped: no tuneable algorithms (all protected)")
+        return {"skipped": True, "reason": "all_protected", "scores": scores}
+
+    # Step 5: Compute softmax weights
+    new_weights = compute_softmax_weights(tuneable_scores)
+
+    # Step 6: Save (with logging of old → new in update_weights_from_backtest)
+    _autotune_logger.info("Updating ensemble weights:")
+    updated = _update_weights(new_weights)
+
+    return {
+        "skipped": False,
+        "scores": scores,
+        "updated_weights": updated,
+    }
+
+
 def analyze_number_distribution(df: pd.DataFrame, periods: int = 100) -> Dict:
     """Analyze number distribution patterns in historical data.
 
