@@ -138,7 +138,7 @@ class BacktestCacheManager:
     def get_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int) -> Optional[Dict]:
         """Get cached algorithm backtest result."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version)
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2')
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -160,7 +160,7 @@ class BacktestCacheManager:
                              result: Dict, computation_time_ms: int = 0):
         """Save algorithm backtest result to cache."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version)
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2')
 
         # Remove cache metadata before saving
         result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
@@ -179,7 +179,7 @@ class BacktestCacheManager:
     def get_full_cache(self, lottery_type: str, periods: int) -> Optional[Dict]:
         """Get cached full backtest result."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version)
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2')
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -201,7 +201,7 @@ class BacktestCacheManager:
                         result: Dict, computation_time_ms: int = 0):
         """Save full backtest result to cache."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version)
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2')
 
         result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
 
@@ -445,6 +445,22 @@ from predict.lotto_predict_LSTMRF import predict_lstm_rf
 from predict.lotto_predict_ensemble import predict_ensemble
 
 
+# ============== Partial Hit Scoring (Story-11) ==============
+
+SCORING_TABLE = {6: 100, 5: 30, 4: 10, 3: 3}
+
+
+def compute_hit_score(predicted_nums: list, predicted_special: int,
+                      actual_nums: list, actual_special: int) -> float:
+    """Compute layered hit score for a single period prediction.
+
+    Scoring: 6/6=100, 5/6=30, 4/6=10, 3/6=3, <3=0, special=+5
+    """
+    main_hits = len(set(predicted_nums) & set(actual_nums))
+    special_hit = 5 if int(predicted_special) == int(actual_special) else 0
+    return SCORING_TABLE.get(main_hits, 0) + special_hit
+
+
 def load_historical_data(lottery_type: str = 'big') -> pd.DataFrame:
     """Load historical lottery data from CSV.
 
@@ -565,6 +581,8 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
             # Calculate hits
             main_hits = calculate_hit_count(predicted_numbers, actual_numbers)
             special_hit = 1 if int(predicted_special) == int(actual_special) else 0
+            period_score = compute_hit_score(predicted_numbers, int(predicted_special),
+                                             actual_numbers, int(actual_special))
 
             results.append({
                 'period': str(actual_row.get('Period', train_end)),
@@ -573,7 +591,8 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
                 'main_hits': int(main_hits),
                 'special_hit': int(special_hit),
                 'predicted_special': int(predicted_special),
-                'actual_special': int(actual_special)
+                'actual_special': int(actual_special),
+                'period_score': period_score
             })
         except Exception as e:
             results.append({
@@ -588,9 +607,20 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
 
     hit_counts = [r['main_hits'] for r in valid_results]
     special_hits = sum(r['special_hit'] for r in valid_results)
+    period_scores = [r.get('period_score', 0) for r in valid_results]
 
     # Hit distribution
     hit_distribution = Counter(hit_counts)
+
+    # Partial hits breakdown
+    partial_hits = {
+        'hit3': sum(1 for h in hit_counts if h == 3),
+        'hit4': sum(1 for h in hit_counts if h == 4),
+        'hit5': sum(1 for h in hit_counts if h == 5),
+        'hit6': sum(1 for h in hit_counts if h == 6),
+    }
+    weighted_score = round(sum(period_scores), 2)
+    avg_score_per_period = round(weighted_score / len(valid_results), 4) if valid_results else 0.0
 
     return {
         'algorithm': algorithm_name,
@@ -603,6 +633,9 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
         'hit_3_or_more': sum(1 for h in hit_counts if h >= 3),
         'hit_4_or_more': sum(1 for h in hit_counts if h >= 4),
         'hit_5_or_more': sum(1 for h in hit_counts if h >= 5),
+        'weighted_score': weighted_score,
+        'avg_score_per_period': avg_score_per_period,
+        'partial_hits': partial_hits,
         'recent_results': valid_results[-10:]  # Last 10 results
     }
 
@@ -663,6 +696,8 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
             rankings.append({
                 'algorithm': algo,
                 'average_hits': result['average_hits'],
+                'weighted_score': result.get('weighted_score', 0),
+                'avg_score_per_period': result.get('avg_score_per_period', 0),
                 'hit_3_plus_rate': round(result['hit_3_or_more'] / result['periods_tested'] * 100, 1)
             })
 
