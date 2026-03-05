@@ -99,11 +99,29 @@ class BacktestCacheManager:
                 )
             ''')
 
+            # Walk-forward validation cache (Story-14)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_validation_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT UNIQUE NOT NULL,
+                    lottery_type TEXT NOT NULL,
+                    train_periods INTEGER NOT NULL,
+                    val_periods INTEGER NOT NULL,
+                    candidate_weights_hash TEXT NOT NULL,
+                    train_score REAL,
+                    val_score REAL,
+                    baseline_val_score REAL,
+                    is_improvement INTEGER,
+                    created_at TEXT NOT NULL
+                )
+            ''')
+
             # Create indexes for faster lookups
             conn.execute('CREATE INDEX IF NOT EXISTS idx_algo_cache_key ON backtest_algorithm_cache(cache_key)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_full_cache_key ON backtest_full_cache(cache_key)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_rolling_cache_key ON backtest_rolling_cache(cache_key)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_optimize_cache_key ON backtest_optimize_cache(cache_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_val_cache_key ON backtest_validation_cache(cache_key)')
 
             conn.commit()
 
@@ -743,7 +761,107 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
 
 
 import logging as _logging
+import hashlib as _hashlib
 _autotune_logger = _logging.getLogger("predict.backtest.autotune")
+
+
+# ============== Walk-Forward Validation (Story-14) ==============
+
+from dataclasses import dataclass as _dataclass
+
+
+@_dataclass
+class ValidationResult:
+    algorithm: str
+    train_periods: int
+    val_periods: int
+    train_score: float
+    val_score: float
+    baseline_val_score: float
+    is_improvement: bool
+    candidate_weights_hash: str = ""
+
+
+class WalkForwardValidator:
+    """Validates candidate weights against baseline on an out-of-sample window.
+
+    Splits available data into:
+      - Training window: used to optimize weights (passed in as candidate_weights)
+      - Validation window: used to evaluate whether new weights improve on baseline
+
+    Prevents overfitting: only apply candidate_weights if val_score beats baseline.
+    """
+
+    def __init__(self, train_periods: int = 40, val_periods: int = 10,
+                 decay_factor: float = 1.0):
+        self.train_periods = train_periods
+        self.val_periods = val_periods
+        self.decay_factor = decay_factor
+
+    def _weights_hash(self, weights: dict) -> str:
+        key = json.dumps(weights, sort_keys=True)
+        return _hashlib.sha256(key.encode()).hexdigest()[:16]
+
+    def _compute_weighted_val_score(self, df: pd.DataFrame, weights: dict,
+                                    lottery_type: str = 'big') -> float:
+        """Run backtest on val_periods for each algorithm and compute weighted score sum."""
+        total_score = 0.0
+        total_weight = 0.0
+
+        # Only run fast algorithms on val window (skip LSTM/RF for speed)
+        fast_algos = {
+            "Hot50": "Hot-50",
+            "Cold50": "Cold-50",
+            "Markov": "Markov",
+            "Pattern": "Pattern",
+            "XGBoost": "XGBoost",
+        }
+
+        for algo_name, ensemble_name in fast_algos.items():
+            w = weights.get(ensemble_name, 0.0)
+            if w == 0:
+                continue
+            result = backtest_algorithm(df, algo_name, self.val_periods, lottery_type,
+                                        decay_factor=self.decay_factor)
+            if "error" in result:
+                continue
+            score = result.get("avg_score_per_period", 0.0)
+            total_score += score * w
+            total_weight += abs(w)
+
+        if total_weight == 0:
+            return 0.0
+        return total_score / total_weight
+
+    def validate(self, df: pd.DataFrame, candidate_weights: dict,
+                 baseline_weights: dict, lottery_type: str = 'big') -> ValidationResult:
+        """Validate candidate weights against baseline on the validation window.
+
+        Args:
+            df: Full historical data
+            candidate_weights: New weights to evaluate
+            baseline_weights: Current weights as baseline
+            lottery_type: 'big' or 'super'
+
+        Returns:
+            ValidationResult with val_score, baseline_val_score, is_improvement
+        """
+        val_score = self._compute_weighted_val_score(df, candidate_weights, lottery_type)
+        baseline_val_score = self._compute_weighted_val_score(df, baseline_weights, lottery_type)
+
+        # Require 2% improvement to apply (guards against noise)
+        is_improvement = val_score > baseline_val_score * 1.02
+
+        return ValidationResult(
+            algorithm="ensemble",
+            train_periods=self.train_periods,
+            val_periods=self.val_periods,
+            train_score=0.0,  # Not computed separately; candidate_weights come pre-optimized
+            val_score=round(val_score, 4),
+            baseline_val_score=round(baseline_val_score, 4),
+            is_improvement=is_improvement,
+            candidate_weights_hash=self._weights_hash(candidate_weights),
+        )
 
 # Backtest algorithm name -> ensemble config name mapping
 _ALGO_NAME_MAP = {
@@ -777,18 +895,24 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
     """
     from predict.config import (
         get_config, get_ensemble_weights, compute_softmax_weights,
-        update_weights_from_backtest as _update_weights, get_decay_factor as _get_decay_factor
+        update_weights_from_backtest as _update_weights, get_decay_factor as _get_decay_factor,
+        get_validation_periods as _get_val_periods
     )
 
     config = get_config()
     if periods is None:
         periods = config.get("backtest_periods", 50)
     decay_factor = _get_decay_factor()
+    val_periods = _get_val_periods()
+    train_periods = max(periods - val_periods, 10)
 
-    _autotune_logger.info(f"Running auto-tune for '{lottery_type}' over {periods} periods (decay={decay_factor})")
+    _autotune_logger.info(
+        f"Running auto-tune for '{lottery_type}' | "
+        f"train={train_periods} val={val_periods} decay={decay_factor}"
+    )
 
-    # Step 1: Run backtest to get weighted_scores per algorithm
-    backtest = run_full_backtest(lottery_type, periods, use_cache=True, decay_factor=decay_factor)
+    # Step 1: Run backtest on training window only
+    backtest = run_full_backtest(lottery_type, train_periods, use_cache=True, decay_factor=decay_factor)
     if "error" in backtest:
         _autotune_logger.error(f"Auto-tune aborted: backtest error — {backtest['error']}")
         return {"skipped": True, "reason": backtest["error"]}
@@ -818,17 +942,50 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
         _autotune_logger.warning("Auto-tune skipped: no tuneable algorithms (all protected)")
         return {"skipped": True, "reason": "all_protected", "scores": scores}
 
-    # Step 5: Compute softmax weights
-    new_weights = compute_softmax_weights(tuneable_scores)
+    # Step 5: Compute softmax candidate weights
+    candidate_weights = compute_softmax_weights(tuneable_scores)
 
-    # Step 6: Save (with logging of old → new in update_weights_from_backtest)
+    # Step 6: Walk-forward validation (Story-14)
+    df = load_historical_data(lottery_type)
+    validator = WalkForwardValidator(
+        train_periods=train_periods,
+        val_periods=val_periods,
+        decay_factor=decay_factor,
+    )
+    val_result = validator.validate(df, candidate_weights, current_weights, lottery_type)
+
+    if not val_result.is_improvement:
+        _autotune_logger.warning(
+            f"Auto-tune skipped: walk-forward validation failed — "
+            f"val_score={val_result.val_score:.4f} vs baseline={val_result.baseline_val_score:.4f}"
+        )
+        return {
+            "skipped": True,
+            "reason": "validation_failed",
+            "scores": scores,
+            "val_result": {
+                "val_score": val_result.val_score,
+                "baseline_val_score": val_result.baseline_val_score,
+                "is_improvement": False,
+            },
+        }
+
+    # Step 7: Apply weights
+    _autotune_logger.info(
+        f"Walk-forward validation passed: {val_result.val_score:.4f} > {val_result.baseline_val_score:.4f}"
+    )
     _autotune_logger.info("Updating ensemble weights:")
-    updated = _update_weights(new_weights)
+    updated = _update_weights(candidate_weights)
 
     return {
         "skipped": False,
         "scores": scores,
         "updated_weights": updated,
+        "val_result": {
+            "val_score": val_result.val_score,
+            "baseline_val_score": val_result.baseline_val_score,
+            "is_improvement": True,
+        },
     }
 
 

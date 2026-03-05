@@ -207,6 +207,12 @@ def get_decay_factor() -> float:
     return float(config.get("backtest_decay_factor", 1.0))
 
 
+def get_validation_periods() -> int:
+    """Get number of periods used for walk-forward validation."""
+    config = get_config()
+    return int(config.get("validation_periods", 10))
+
+
 def reset_to_defaults() -> Dict[str, Any]:
     """Reset all configuration to defaults."""
     global _config

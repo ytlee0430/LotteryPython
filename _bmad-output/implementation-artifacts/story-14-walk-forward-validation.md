@@ -1,7 +1,7 @@
 # Story-14: Walk-Forward Validation（滾動前向驗證）
 
 ## Status
-ready
+done
 
 ## Story
 **As a** LotteryPython developer,
