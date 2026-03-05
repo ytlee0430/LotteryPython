@@ -201,6 +201,12 @@ def update_weights_from_backtest(new_weights: Dict[str, float]) -> Dict[str, flo
     return updated
 
 
+def get_decay_factor() -> float:
+    """Get backtest time-decay factor (1.0 = no decay)."""
+    config = get_config()
+    return float(config.get("backtest_decay_factor", 1.0))
+
+
 def reset_to_defaults() -> Dict[str, Any]:
     """Reset all configuration to defaults."""
     global _config

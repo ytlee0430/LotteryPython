@@ -16,5 +16,6 @@
     "Astrology-Zodiac": 1
   },
   "auto_tune_enabled": true,
-  "backtest_periods": 50
+  "backtest_periods": 50,
+  "backtest_decay_factor": 0.95
 }

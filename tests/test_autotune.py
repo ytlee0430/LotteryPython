@@ -88,7 +88,7 @@ def test_run_autotune_skips_when_all_zero(monkeypatch):
     from predict import backtest as bt_module
 
     # Mock run_full_backtest to return zero weighted_scores
-    def mock_full_backtest(lottery_type, periods, use_cache=True):
+    def mock_full_backtest(lottery_type, periods, use_cache=True, decay_factor=1.0):
         return {
             "ranking": [
                 {"algorithm": "Hot50", "weighted_score": 0.0, "average_hits": 0.0},

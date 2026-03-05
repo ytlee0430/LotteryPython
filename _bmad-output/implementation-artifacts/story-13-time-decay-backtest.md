@@ -1,7 +1,7 @@
 # Story-13: Time-Decay Backtest Window（時間衰退回測窗口）
 
 ## Status
-ready
+done
 
 ## Story
 **As a** LotteryPython prediction system,

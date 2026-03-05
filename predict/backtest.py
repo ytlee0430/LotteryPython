@@ -135,10 +135,12 @@ class BacktestCacheManager:
 
     # ---- Algorithm Cache ----
 
-    def get_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int) -> Optional[Dict]:
+    def get_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int,
+                            decay_factor: float = 1.0) -> Optional[Dict]:
         """Get cached algorithm backtest result."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2')
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2', decay_str)
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -157,10 +159,12 @@ class BacktestCacheManager:
         return None
 
     def save_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int,
-                             result: Dict, computation_time_ms: int = 0):
+                             result: Dict, computation_time_ms: int = 0,
+                             decay_factor: float = 1.0):
         """Save algorithm backtest result to cache."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2')
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2', decay_str)
 
         # Remove cache metadata before saving
         result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
@@ -176,10 +180,12 @@ class BacktestCacheManager:
 
     # ---- Full Backtest Cache ----
 
-    def get_full_cache(self, lottery_type: str, periods: int) -> Optional[Dict]:
+    def get_full_cache(self, lottery_type: str, periods: int,
+                       decay_factor: float = 1.0) -> Optional[Dict]:
         """Get cached full backtest result."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2')
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2', decay_str)
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -198,10 +204,12 @@ class BacktestCacheManager:
         return None
 
     def save_full_cache(self, lottery_type: str, periods: int,
-                        result: Dict, computation_time_ms: int = 0):
+                        result: Dict, computation_time_ms: int = 0,
+                        decay_factor: float = 1.0):
         """Save full backtest result to cache."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2')
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2', decay_str)
 
         result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
 
@@ -496,7 +504,8 @@ def calculate_hit_count(predicted: List[int], actual: List[int]) -> int:
 
 
 def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
-                       periods: int = 50, lottery_type: str = 'big') -> Dict:
+                       periods: int = 50, lottery_type: str = 'big',
+                       decay_factor: float = 1.0) -> Dict:
     """Run backtest for a specific algorithm.
 
     Args:
@@ -504,6 +513,7 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
         algorithm_name: Name of the algorithm to test
         periods: Number of periods to backtest
         lottery_type: 'big' or 'super'
+        decay_factor: Time-decay coefficient (1.0 = no decay, 0.95 = recent periods weighted more)
 
     Returns:
         Dict with backtest results
@@ -581,8 +591,12 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
             # Calculate hits
             main_hits = calculate_hit_count(predicted_numbers, actual_numbers)
             special_hit = 1 if int(predicted_special) == int(actual_special) else 0
-            period_score = compute_hit_score(predicted_numbers, int(predicted_special),
-                                             actual_numbers, int(actual_special))
+            raw_score = compute_hit_score(predicted_numbers, int(predicted_special),
+                                          actual_numbers, int(actual_special))
+
+            # Time-decay: i=0 oldest, i=periods-1 newest; age=0 means newest
+            age = (periods - 1) - i
+            period_score = raw_score * (decay_factor ** age)
 
             results.append({
                 'period': str(actual_row.get('Period', train_end)),
@@ -592,7 +606,8 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
                 'special_hit': int(special_hit),
                 'predicted_special': int(predicted_special),
                 'actual_special': int(actual_special),
-                'period_score': period_score
+                'period_score': period_score,
+                'raw_score': raw_score,
             })
         except Exception as e:
             results.append({
@@ -636,29 +651,35 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
         'weighted_score': weighted_score,
         'avg_score_per_period': avg_score_per_period,
         'partial_hits': partial_hits,
+        'decay_factor': decay_factor,
         'recent_results': valid_results[-10:]  # Last 10 results
     }
 
 
 def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
-                      use_cache: bool = True) -> Dict:
+                      use_cache: bool = True, decay_factor: float = None) -> Dict:
     """Run backtest for all supported algorithms.
 
     Args:
         lottery_type: 'big' or 'super'
         periods: Number of periods to backtest
         use_cache: Whether to use cached results (default True)
+        decay_factor: Time-decay coefficient (None = read from config)
 
     Returns:
         Dict with results for all algorithms
     """
     import time
+    from predict.config import get_decay_factor as _get_decay_factor
+    if decay_factor is None:
+        decay_factor = _get_decay_factor()
+
     start_time = time.time()
 
     # Check cache first
     if use_cache:
         cache_manager = get_cache_manager()
-        cached = cache_manager.get_full_cache(lottery_type, periods)
+        cached = cache_manager.get_full_cache(lottery_type, periods, decay_factor=decay_factor)
         if cached:
             return cached
 
@@ -672,22 +693,22 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
     results = {}
 
     for algo in algorithms:
-        # Check individual algorithm cache
+        # Check individual algorithm cache (with decay_factor in key)
         if use_cache:
-            algo_cached = cache_manager.get_algorithm_cache(lottery_type, algo, periods)
+            algo_cached = cache_manager.get_algorithm_cache(lottery_type, algo, periods, decay_factor=decay_factor)
             if algo_cached:
                 results[algo] = algo_cached
                 continue
 
         algo_start = time.time()
-        algo_result = backtest_algorithm(df, algo, periods, lottery_type)
+        algo_result = backtest_algorithm(df, algo, periods, lottery_type, decay_factor=decay_factor)
         algo_time_ms = int((time.time() - algo_start) * 1000)
 
         results[algo] = algo_result
 
         # Save individual algorithm result to cache
         if use_cache and 'error' not in algo_result:
-            cache_manager.save_algorithm_cache(lottery_type, algo, periods, algo_result, algo_time_ms)
+            cache_manager.save_algorithm_cache(lottery_type, algo, periods, algo_result, algo_time_ms, decay_factor=decay_factor)
 
     # Calculate ranking by average hits
     rankings = []
@@ -716,7 +737,7 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
 
     # Save full result to cache
     if use_cache:
-        cache_manager.save_full_cache(lottery_type, periods, result, total_time_ms)
+        cache_manager.save_full_cache(lottery_type, periods, result, total_time_ms, decay_factor=decay_factor)
 
     return result
 
@@ -756,17 +777,18 @@ def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
     """
     from predict.config import (
         get_config, get_ensemble_weights, compute_softmax_weights,
-        update_weights_from_backtest as _update_weights
+        update_weights_from_backtest as _update_weights, get_decay_factor as _get_decay_factor
     )
 
     config = get_config()
     if periods is None:
         periods = config.get("backtest_periods", 50)
+    decay_factor = _get_decay_factor()
 
-    _autotune_logger.info(f"Running auto-tune for '{lottery_type}' over {periods} periods")
+    _autotune_logger.info(f"Running auto-tune for '{lottery_type}' over {periods} periods (decay={decay_factor})")
 
     # Step 1: Run backtest to get weighted_scores per algorithm
-    backtest = run_full_backtest(lottery_type, periods, use_cache=True)
+    backtest = run_full_backtest(lottery_type, periods, use_cache=True, decay_factor=decay_factor)
     if "error" in backtest:
         _autotune_logger.error(f"Auto-tune aborted: backtest error — {backtest['error']}")
         return {"skipped": True, "reason": backtest["error"]}
