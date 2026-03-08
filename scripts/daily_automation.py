@@ -32,7 +32,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -111,14 +111,20 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     return logger
 
 
-def get_today_lottery_type() -> Optional[str]:
+def get_today_lottery_type() -> str:
     """
     Determine which lottery type should be processed today.
+
+    On draw days, returns that day's lottery type.
+    On non-draw days, returns the next upcoming draw's lottery type.
 
     Returns:
         'big' for Tuesday/Friday (大樂透)
         'super' for Monday/Thursday (威力彩)
-        None for other days
+        For non-draw days:
+          Wednesday → 'super' (next draw: Thursday)
+          Saturday  → 'super' (next draw: Monday)
+          Sunday    → 'super' (next draw: Monday)
     """
     weekday = datetime.now().weekday()  # 0=Monday, 6=Sunday
 
@@ -127,7 +133,14 @@ def get_today_lottery_type() -> Optional[str]:
     elif weekday in [0, 3]:  # Monday, Thursday
         return 'super'
     else:
-        return None
+        # Non-draw days: next draw is always 威力彩
+        # Wed→Thu(super), Sat→Mon(super), Sun→Mon(super)
+        return 'super'
+
+
+def is_draw_day() -> bool:
+    """Check if today is a lottery draw day (Mon/Tue/Thu/Fri)."""
+    return datetime.now().weekday() in [0, 1, 3, 4]
 
 
 def get_lottery_name(lottery_type: str) -> str:
@@ -613,16 +626,20 @@ def main():
     # Determine lottery type
     if args.type == 'auto':
         lottery_type = get_today_lottery_type()
-        if lottery_type is None and not args.force:
-            print(f"Today ({datetime.now().strftime('%A')}) is not a draw day.")
-            print("Use --force to run anyway, or specify --type big/super")
-            sys.exit(0)
-        elif lottery_type is None:
-            # Default to 'big' if forced on non-draw day
-            lottery_type = 'big'
-            print(f"Forced run on non-draw day, using: {lottery_type}")
+        draw_day = is_draw_day()
     else:
         lottery_type = args.type
+        draw_day = True  # explicit type always runs full pipeline
+
+    # On non-draw days: auto-skip heavy steps (backtest + autotune)
+    skip_backtest = args.skip_backtest
+    skip_autotune = args.skip_autotune
+    if not draw_day and not args.force:
+        skip_backtest = True
+        skip_autotune = True
+        day_name = datetime.now().strftime('%A')
+        lottery_name = "大樂透" if lottery_type == "big" else "威力彩"
+        print(f"Non-draw day ({day_name}): lightweight run for next draw ({lottery_name})")
 
     # Run automation
     automation = DailyAutomation(
@@ -633,9 +650,9 @@ def main():
 
     results = automation.run(
         skip_update=args.skip_update,
-        skip_backtest=args.skip_backtest,
+        skip_backtest=skip_backtest,
         skip_predict=args.skip_predict,
-        skip_autotune=args.skip_autotune,
+        skip_autotune=skip_autotune,
         skip_notify=args.skip_notify,
     )
 
