@@ -16,12 +16,12 @@
 
 | 彩種 | 開獎日 | 建議執行時間 |
 |------|--------|--------------|
-| 大樂透 | 週二、週五 | 21:30 (開獎後30分鐘) |
-| 威力彩 | 週一、週四 | 21:30 (開獎後30分鐘) |
+| 大樂透 | 週二、週五 | 09:00 |
+| 威力彩 | 週一、週四 | 09:00 |
 
 ### 每日排程（推薦）
 
-每天 21:30 執行，腳本會自動判斷當天應處理哪種彩種。
+每天 09:00 執行，腳本會自動判斷當天應處理哪種彩種。
 
 ### 非開獎日行為
 
@@ -162,9 +162,9 @@ launchctl unload ~/Library/LaunchAgents/com.lotterypython.daily.plist
 crontab -e
 ```
 
-加入以下設定（每天 21:30 執行）：
+加入以下設定（每天 09:00 執行）：
 ```cron
-30 21 * * * /path/to/LotteryPython/scripts/daily_automation.sh >> /path/to/logs/cron.log 2>&1
+0 9 * * * /path/to/LotteryPython/scripts/daily_automation.sh >> /path/to/logs/cron.log 2>&1
 ```
 
 ## 設定參數
@@ -187,7 +187,7 @@ crontab -e
 ```yaml
 # 執行時間設定
 schedule:
-  time: "21:30"
+  time: "09:00"
   timezone: "Asia/Taipei"
 
 # 回測參數
