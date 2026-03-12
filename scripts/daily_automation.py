@@ -32,11 +32,26 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load .env if present (fallback when not invoked via shell script)
+_env_file = PROJECT_ROOT / ".env"
+if _env_file.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_file)
+    except ImportError:
+        # dotenv not installed; parse manually for simple KEY=VALUE lines
+        with open(_env_file) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _, _v = _line.partition("=")
+                    os.environ.setdefault(_k.strip(), _v.strip())
 
 # Import project modules
 from lotterypython.update_data import main as update_lottery_data
@@ -44,9 +59,9 @@ from lotterypython.logic import run_predictions
 from lotterypython.analysis_sheet import append_analysis_results
 from predict.backtest import (
     run_full_backtest, rolling_backtest, optimize_window_size,
-    clear_outdated_backtest_cache, get_backtest_cache_stats
+    clear_outdated_backtest_cache, get_backtest_cache_stats, run_autotune
 )
-from predict.config import update_weights_from_backtest, get_config
+from predict.config import get_config
 
 
 # Configure logging
@@ -96,14 +111,20 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     return logger
 
 
-def get_today_lottery_type() -> Optional[str]:
+def get_today_lottery_type() -> str:
     """
     Determine which lottery type should be processed today.
+
+    On draw days, returns that day's lottery type.
+    On non-draw days, returns the next upcoming draw's lottery type.
 
     Returns:
         'big' for Tuesday/Friday (大樂透)
         'super' for Monday/Thursday (威力彩)
-        None for other days
+        For non-draw days:
+          Wednesday → 'super' (next draw: Thursday)
+          Saturday  → 'super' (next draw: Monday)
+          Sunday    → 'super' (next draw: Monday)
     """
     weekday = datetime.now().weekday()  # 0=Monday, 6=Sunday
 
@@ -112,7 +133,14 @@ def get_today_lottery_type() -> Optional[str]:
     elif weekday in [0, 3]:  # Monday, Thursday
         return 'super'
     else:
-        return None
+        # Non-draw days: next draw is always 威力彩
+        # Wed→Thu(super), Sat→Mon(super), Sun→Mon(super)
+        return 'super'
+
+
+def is_draw_day() -> bool:
+    """Check if today is a lottery draw day (Mon/Tue/Thu/Fri)."""
+    return datetime.now().weekday() in [0, 1, 3, 4]
 
 
 def get_lottery_name(lottery_type: str) -> str:
@@ -158,46 +186,68 @@ class DailyAutomation:
 
     def step_update_data(self) -> bool:
         """Step 1: Update lottery data."""
-        self.log_step(1, 7, "Updating lottery data...")
+        self.log_step(1, 8, "Updating lottery data...")
 
         if self.dry_run:
             self.logger.info("  [DRY RUN] Would update lottery data")
             self.results["steps"]["update"] = {"status": "skipped", "reason": "dry_run"}
             return True
 
-        try:
-            # Call update function
-            result = update_lottery_data(self.lottery_type)
-            new_records = result.get('new_records', 0) if isinstance(result, dict) else 0
+        # Always update BOTH lottery types so neither falls behind
+        all_types = ['big', 'super']
+        total_new = 0
+        update_summary = {}
 
-            self.log_step(1, 7, f"Updated {new_records} new records")
-            self.results["steps"]["update"] = {"status": "success", "new_records": new_records}
-            return True
-        except Exception as e:
-            self.logger.warning(f"Step 1/7: Data update failed: {e}")
-            self.results["steps"]["update"] = {"status": "error", "error": str(e)}
-            # Continue with other steps even if update fails
-            return True
+        for ltype in all_types:
+            try:
+                result = update_lottery_data(ltype)
+                new_records = result.get('new_records', 0) if isinstance(result, dict) else 0
+                new_draws = result.get('draws', []) if isinstance(result, dict) else []
+                update_summary[ltype] = {"status": "success", "new_records": new_records}
+                total_new += new_records
+
+                if new_records > 0:
+                    self.logger.info(f"  {get_lottery_name(ltype)}: {new_records} new record(s)")
+                    try:
+                        from notify.line_notifier import notify_data_update
+                        notify_data_update(
+                            lottery_type=ltype,
+                            lottery_name=get_lottery_name(ltype),
+                            draws=new_draws,
+                            dry_run=self.dry_run,
+                        )
+                        self.logger.info(f"  LINE update notification sent for {get_lottery_name(ltype)}")
+                    except Exception as ne:
+                        self.logger.warning(f"  LINE update notify failed for {ltype}: {ne}")
+                else:
+                    self.logger.info(f"  {get_lottery_name(ltype)}: no new records")
+            except Exception as e:
+                self.logger.warning(f"  {get_lottery_name(ltype)} update failed: {e}")
+                update_summary[ltype] = {"status": "error", "error": str(e)}
+
+        self.log_step(1, 8, f"Data update done ({total_new} total new records)")
+        self.results["steps"]["update"] = {"status": "success", "total_new": total_new, **update_summary}
+        return True
 
     def step_clear_cache(self) -> bool:
         """Step 2: Clear outdated cache."""
-        self.log_step(2, 7, "Clearing outdated cache...")
+        self.log_step(2, 8, "Clearing outdated cache...")
 
         try:
             cleared = clear_outdated_backtest_cache(self.lottery_type)
             total_cleared = cleared.get('total', 0)
 
-            self.log_step(2, 7, f"Cleared {total_cleared} outdated entries")
+            self.log_step(2, 8, f"Cleared {total_cleared} outdated entries")
             self.results["steps"]["clear_cache"] = {"status": "success", "cleared": total_cleared}
             return True
         except Exception as e:
-            self.logger.warning(f"Step 2/7: Cache clear failed: {e}")
+            self.logger.warning(f"Step 2/8: Cache clear failed: {e}")
             self.results["steps"]["clear_cache"] = {"status": "error", "error": str(e)}
             return True
 
     def step_full_backtest(self) -> bool:
         """Step 3: Run full backtest."""
-        self.log_step(3, 7, "Running full backtest...")
+        self.log_step(3, 8, "Running full backtest...")
 
         import time
         start = time.time()
@@ -207,7 +257,7 @@ class DailyAutomation:
             elapsed = time.time() - start
             from_cache = result.get('from_cache', False)
 
-            self.log_step(3, 7, f"Backtest completed ({elapsed:.1f}s, from_cache={from_cache})")
+            self.log_step(3, 8, f"Backtest completed ({elapsed:.1f}s, from_cache={from_cache})")
             self.results["steps"]["backtest"] = {
                 "status": "success",
                 "cached": from_cache,
@@ -215,13 +265,13 @@ class DailyAutomation:
             }
             return True
         except Exception as e:
-            self.logger.error(f"Step 3/7: Full backtest failed: {e}", exc_info=True)
+            self.logger.error(f"Step 3/8: Full backtest failed: {e}", exc_info=True)
             self.results["steps"]["backtest"] = {"status": "error", "error": str(e)}
             return False
 
     def step_rolling_backtest(self) -> bool:
         """Step 4: Run rolling backtest."""
-        self.log_step(4, 7, "Running rolling backtest...")
+        self.log_step(4, 8, "Running rolling backtest...")
 
         import time
         start = time.time()
@@ -236,7 +286,7 @@ class DailyAutomation:
             elapsed = time.time() - start
             from_cache = result.get('from_cache', False)
 
-            self.log_step(4, 7, f"Rolling backtest completed ({elapsed:.1f}s, from_cache={from_cache})")
+            self.log_step(4, 8, f"Rolling backtest completed ({elapsed:.1f}s, from_cache={from_cache})")
             self.results["steps"]["rolling"] = {
                 "status": "success",
                 "cached": from_cache,
@@ -244,13 +294,13 @@ class DailyAutomation:
             }
             return True
         except Exception as e:
-            self.logger.error(f"Step 4/7: Rolling backtest failed: {e}", exc_info=True)
+            self.logger.error(f"Step 4/8: Rolling backtest failed: {e}", exc_info=True)
             self.results["steps"]["rolling"] = {"status": "error", "error": str(e)}
             return False
 
     def step_optimize(self) -> bool:
         """Step 5: Run parameter optimization."""
-        self.log_step(5, 7, "Running parameter optimization...")
+        self.log_step(5, 8, "Running parameter optimization...")
 
         import time
         start = time.time()
@@ -267,7 +317,7 @@ class DailyAutomation:
             from_cache = result.get('from_cache', False)
             optimal = result.get('optimal', {})
 
-            self.log_step(5, 7, f"Optimization completed ({elapsed:.1f}s)")
+            self.log_step(5, 8, f"Optimization completed ({elapsed:.1f}s)")
             self.logger.info(f"  Optimal Hot window: {optimal.get('hot_window', 'N/A')}")
             self.logger.info(f"  Optimal Cold window: {optimal.get('cold_window', 'N/A')}")
 
@@ -279,29 +329,38 @@ class DailyAutomation:
             }
             return True
         except Exception as e:
-            self.logger.error(f"Step 5/7: Optimization failed: {e}", exc_info=True)
+            self.logger.error(f"Step 5/8: Optimization failed: {e}", exc_info=True)
             self.results["steps"]["optimize"] = {"status": "error", "error": str(e)}
             return False
 
     def step_autotune(self) -> bool:
-        """Step 6: Auto-tune ensemble weights."""
-        self.log_step(6, 7, "Auto-tuning ensemble weights...")
+        """Step 6: Auto-tune ensemble weights using softmax scoring."""
+        self.log_step(6, 8, "Auto-tuning ensemble weights...")
 
         if self.dry_run:
             self.logger.info("  [DRY RUN] Would update ensemble weights")
             self.results["steps"]["autotune"] = {"status": "skipped", "reason": "dry_run"}
             return True
 
+        config = get_config()
+        if not config.get("auto_tune_enabled", False):
+            self.logger.info("  Auto-tune disabled (auto_tune_enabled=false)")
+            self.results["steps"]["autotune"] = {"status": "skipped", "reason": "disabled"}
+            return True
+
         try:
-            # Run backtest first to get results for auto-tune
-            backtest_results = run_full_backtest(self.lottery_type, self.backtest_periods, use_cache=True)
+            result = run_autotune(self.lottery_type, self.backtest_periods)
 
-            if 'error' in backtest_results:
-                raise Exception(backtest_results['error'])
+            if result.get("skipped"):
+                self.logger.info(f"  Auto-tune skipped: {result.get('reason')}")
+                self.results["steps"]["autotune"] = {
+                    "status": "skipped",
+                    "reason": result.get("reason")
+                }
+                return True
 
-            new_weights = update_weights_from_backtest(backtest_results)
-
-            self.log_step(6, 7, "Weights updated")
+            new_weights = result.get("updated_weights", {})
+            self.log_step(6, 8, "Weights updated")
             if self.verbose:
                 for algo, weight in new_weights.items():
                     self.logger.debug(f"  {algo}: {weight}")
@@ -313,69 +372,114 @@ class DailyAutomation:
             }
             return True
         except Exception as e:
-            self.logger.warning(f"Step 6/7: Auto-tune failed: {e}")
+            self.logger.warning(f"Step 6/8: Auto-tune failed: {e}")
             self.results["steps"]["autotune"] = {"status": "error", "error": str(e)}
             return True
 
-    def step_predict(self) -> bool:
-        """Step 7: Run predictions and save results."""
-        self.log_step(7, 7, "Running predictions...")
+    def step_predict(self) -> tuple:
+        """Step 7: Run predictions for both lottery types and save results.
+
+        Returns:
+            Tuple[bool, dict, dict]: (success, predictions_big, predictions_super)
+        """
+        self.log_step(7, 8, "Running predictions (大樂透 + 威力彩)...")
 
         if self.dry_run:
             self.logger.info("  [DRY RUN] Would run predictions and save to Google Sheets")
             self.results["steps"]["predict"] = {"status": "skipped", "reason": "dry_run"}
+            return True, {}, {}
+
+        from predict.backtest import load_historical_data
+
+        predictions_big = {}
+        predictions_super = {}
+        saved_to_sheets = False
+
+        for ltype in ['big', 'super']:
+            lname = get_lottery_name(ltype)
+            try:
+                df = load_historical_data(ltype)
+                if df.empty:
+                    self.logger.warning(f"  {lname}: no historical data, skipping")
+                    continue
+
+                preds = run_predictions(df)
+                self.logger.info(f"  {lname}: {len(preds)} algorithm(s)")
+
+                if ltype == 'big':
+                    predictions_big = preds
+                    self._last_df_big = df
+                else:
+                    predictions_super = preds
+                    self._last_df_super = df
+
+                # Save primary lottery type to Google Sheets
+                if ltype == self.lottery_type:
+                    try:
+                        prediction_tuples = [
+                            (algo, r.get('next_period', ''), r.get('numbers', []), r.get('special', 0))
+                            for algo, r in preds.items()
+                            if isinstance(r, dict) and 'error' not in r
+                        ]
+                        if prediction_tuples:
+                            append_analysis_results(prediction_tuples, ltype)
+                            self.logger.info(f"  {lname}: results saved to Google Sheets")
+                            saved_to_sheets = True
+                    except Exception as e:
+                        self.logger.warning(f"  {lname}: failed to save to Google Sheets: {e}")
+
+            except Exception as e:
+                self.logger.error(f"  {lname}: prediction failed: {e}", exc_info=True)
+
+        success = bool(predictions_big or predictions_super)
+        total_algos = len(predictions_big) + len(predictions_super)
+        self.log_step(7, 8, f"Predictions completed ({total_algos} total across both types)")
+        self.results["steps"]["predict"] = {
+            "status": "success" if success else "error",
+            "algorithms_big": len(predictions_big),
+            "algorithms_super": len(predictions_super),
+            "saved_to_sheets": saved_to_sheets,
+        }
+        return success, predictions_big, predictions_super
+
+    def step_line_notify(self, predictions_big: dict, predictions_super: dict, skip: bool = False) -> bool:
+        """Step 8: Push combined LINE notifications (both lottery types) to enabled users."""
+        self.log_step(8, 8, "Sending LINE notifications (大樂透 + 威力彩)...")
+
+        if skip:
+            self.logger.info("  Step 8/8: Skipped (--skip-notify)")
+            self.results["steps"]["line_notify"] = {"status": "skipped", "reason": "flag"}
+            return True
+
+        if self.dry_run:
+            self.logger.info("  [DRY RUN] Would send LINE notifications")
+            self.results["steps"]["line_notify"] = {"status": "skipped", "reason": "dry_run"}
+            return True
+
+        if not os.environ.get("LINE_CHANNEL_ACCESS_TOKEN"):
+            self.logger.warning("  LINE_CHANNEL_ACCESS_TOKEN not set — skipping notifications")
+            self.results["steps"]["line_notify"] = {"status": "skipped", "reason": "no_token"}
             return True
 
         try:
-            # Load data first
-            from predict.backtest import load_historical_data
-            df = load_historical_data(self.lottery_type)
+            from notify.line_notifier import notify_all_users_both
 
-            if df.empty:
-                raise Exception("No historical data available")
-
-            # Run predictions
-            predictions = run_predictions(df)
-            num_algorithms = len(predictions)
-
-            self.log_step(7, 7, f"Predictions completed ({num_algorithms} algorithms)")
-
-            # Save to Google Sheets - convert dict format to tuple format
-            try:
-                # Convert predictions dict to list of tuples (algorithm, period, numbers, special)
-                prediction_tuples = []
-                for algo_name, result in predictions.items():
-                    if isinstance(result, dict) and 'error' not in result:
-                        prediction_tuples.append((
-                            algo_name,
-                            result.get('next_period', ''),
-                            result.get('numbers', []),
-                            result.get('special', 0)
-                        ))
-
-                if prediction_tuples:
-                    append_analysis_results(prediction_tuples, self.lottery_type)
-                    self.logger.info("  Results saved to Google Sheets")
-                    saved_to_sheets = True
-                else:
-                    self.logger.warning("  No valid predictions to save")
-                    saved_to_sheets = False
-            except Exception as e:
-                self.logger.warning(f"  Failed to save to Google Sheets: {e}")
-                saved_to_sheets = False
-
-            self.results["steps"]["predict"] = {
-                "status": "success",
-                "algorithms": num_algorithms,
-                "saved_to_sheets": saved_to_sheets
-            }
+            summary = notify_all_users_both(
+                predictions_big=predictions_big,
+                predictions_super=predictions_super,
+                df_big=getattr(self, '_last_df_big', None),
+                df_super=getattr(self, '_last_df_super', None),
+                dry_run=self.dry_run,
+            )
+            self.log_step(8, 8, f"Notifications: {summary['notified']} sent, {summary['failed']} failed, {summary['skipped']} skipped")
+            self.results["steps"]["line_notify"] = {"status": "success", **summary}
             return True
         except Exception as e:
-            self.logger.error(f"Step 7/7: Prediction failed: {e}", exc_info=True)
-            self.results["steps"]["predict"] = {"status": "error", "error": str(e)}
-            return False
+            self.logger.error(f"Step 8/8: LINE notify failed: {e}", exc_info=True)
+            self.results["steps"]["line_notify"] = {"status": "error", "error": str(e)}
+            return True  # Notification failure does not fail automation
 
-    def run(self, skip_update=False, skip_backtest=False, skip_predict=False, skip_autotune=False) -> Dict:
+    def run(self, skip_update=False, skip_backtest=False, skip_predict=False, skip_autotune=False, skip_notify=False) -> Dict:
         """Execute the complete daily automation workflow."""
         lottery_name = get_lottery_name(self.lottery_type)
 
@@ -391,7 +495,7 @@ class DailyAutomation:
         if not skip_update:
             self.step_update_data()
         else:
-            self.logger.info("Step 1/7: Skipped (--skip-update)")
+            self.logger.info("Step 1/8: Skipped (--skip-update)")
             self.results["steps"]["update"] = {"status": "skipped", "reason": "flag"}
 
         # Step 2: Clear outdated cache
@@ -406,7 +510,7 @@ class DailyAutomation:
             if not self.step_optimize():
                 success = False
         else:
-            self.logger.info("Steps 3-5/7: Skipped (--skip-backtest)")
+            self.logger.info("Steps 3-5/8: Skipped (--skip-backtest)")
             for step in ["backtest", "rolling", "optimize"]:
                 self.results["steps"][step] = {"status": "skipped", "reason": "flag"}
 
@@ -414,16 +518,22 @@ class DailyAutomation:
         if not skip_autotune:
             self.step_autotune()
         else:
-            self.logger.info("Step 6/7: Skipped (--skip-autotune)")
+            self.logger.info("Step 6/8: Skipped (--skip-autotune)")
             self.results["steps"]["autotune"] = {"status": "skipped", "reason": "flag"}
 
         # Step 7: Predict
+        predictions_big = {}
+        predictions_super = {}
         if not skip_predict:
-            if not self.step_predict():
+            predict_ok, predictions_big, predictions_super = self.step_predict()
+            if not predict_ok:
                 success = False
         else:
-            self.logger.info("Step 7/7: Skipped (--skip-predict)")
+            self.logger.info("Step 7/8: Skipped (--skip-predict)")
             self.results["steps"]["predict"] = {"status": "skipped", "reason": "flag"}
+
+        # Step 8: LINE Notifications
+        self.step_line_notify(predictions_big, predictions_super, skip=skip_notify)
 
         # Calculate duration
         end_time = datetime.now()
@@ -496,6 +606,11 @@ def main():
         help="Skip auto-tune step"
     )
     parser.add_argument(
+        '--skip-notify',
+        action='store_true',
+        help="Skip LINE notification step"
+    )
+    parser.add_argument(
         '--dry-run',
         action='store_true',
         help="Test mode, don't write results"
@@ -511,16 +626,20 @@ def main():
     # Determine lottery type
     if args.type == 'auto':
         lottery_type = get_today_lottery_type()
-        if lottery_type is None and not args.force:
-            print(f"Today ({datetime.now().strftime('%A')}) is not a draw day.")
-            print("Use --force to run anyway, or specify --type big/super")
-            sys.exit(0)
-        elif lottery_type is None:
-            # Default to 'big' if forced on non-draw day
-            lottery_type = 'big'
-            print(f"Forced run on non-draw day, using: {lottery_type}")
+        draw_day = is_draw_day()
     else:
         lottery_type = args.type
+        draw_day = True  # explicit type always runs full pipeline
+
+    # On non-draw days: auto-skip heavy steps (backtest + autotune)
+    skip_backtest = args.skip_backtest
+    skip_autotune = args.skip_autotune
+    if not draw_day and not args.force:
+        skip_backtest = True
+        skip_autotune = True
+        day_name = datetime.now().strftime('%A')
+        lottery_name = "大樂透" if lottery_type == "big" else "威力彩"
+        print(f"Non-draw day ({day_name}): lightweight run for next draw ({lottery_name})")
 
     # Run automation
     automation = DailyAutomation(
@@ -531,9 +650,10 @@ def main():
 
     results = automation.run(
         skip_update=args.skip_update,
-        skip_backtest=args.skip_backtest,
+        skip_backtest=skip_backtest,
         skip_predict=args.skip_predict,
-        skip_autotune=args.skip_autotune
+        skip_autotune=skip_autotune,
+        skip_notify=args.skip_notify,
     )
 
     # Exit with appropriate code

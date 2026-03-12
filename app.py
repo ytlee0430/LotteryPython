@@ -128,6 +128,35 @@ def profiles_ui():
     """Render the profile management UI page."""
     return render_template('profiles.html')
 
+@app.route('/settings')
+@login_required
+def settings():
+    """Render the settings page (personal ensemble weights)."""
+    from predict.config import DEFAULT_CONFIG
+    algo_names = list(DEFAULT_CONFIG['ensemble_weights'].keys())
+    return render_template('settings.html', algo_names=algo_names)
+
+@app.route('/api/preferences', methods=['GET'])
+@login_required
+def get_preferences():
+    """Return current user's personal ensemble weight preferences."""
+    prefs = get_user_manager().get_preferences(current_user.id)
+    return jsonify(prefs)
+
+@app.route('/api/preferences', methods=['PUT'])
+@login_required
+def set_preferences():
+    """Save current user's personal ensemble weight preferences."""
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"error": "Expected JSON object"}), 400
+    # Validate: each value must be a number in [0, 2]
+    for key, val in data.items():
+        if not isinstance(val, (int, float)) or not (0 <= val <= 2):
+            return jsonify({"error": f"Weight for '{key}' must be a number in [0, 2]"}), 400
+    get_user_manager().set_preferences(current_user.id, data)
+    return jsonify({"message": "Preferences saved"})
+
 @app.route('/predict', methods=['POST'])
 @login_required
 def predict():
@@ -565,7 +594,30 @@ def backtest():
         return jsonify({"error": "Periods must be between 10 and 200"}), 400
 
     try:
+        from predict.config import get_validation_periods, get_ensemble_weights, get_decay_factor
+        from predict.backtest import WalkForwardValidator, load_historical_data
+
         results = run_full_backtest(lottery_type, periods)
+
+        # Story-14: Include walk-forward validation metadata
+        try:
+            val_periods = get_validation_periods()
+            train_periods = max(periods - val_periods, 10)
+            decay_factor = get_decay_factor()
+            df = load_historical_data(lottery_type)
+            current_weights = get_ensemble_weights()
+            validator = WalkForwardValidator(train_periods, val_periods, decay_factor)
+            val_result = validator.validate(df, current_weights, current_weights, lottery_type)
+            results["validation"] = {
+                "train_periods": train_periods,
+                "val_periods": val_periods,
+                "val_score": val_result.val_score,
+                "baseline_val_score": val_result.baseline_val_score,
+                "passed": val_result.is_improvement,
+            }
+        except Exception:
+            pass  # Validation is best-effort; don't fail the main request
+
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人設定 - Lottery Predictor</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; max-width: 700px; margin: 0 auto; background: #f8f9fa; }
+        h1 { color: #333; margin-bottom: 5px; }
+        .subtitle { color: #666; font-size: 0.9em; margin-bottom: 25px; }
+        .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .card h2 { margin: 0 0 15px; color: #444; font-size: 1.1em; }
+        .algo-row { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
+        .algo-name { width: 130px; font-size: 0.9em; color: #555; font-weight: 600; flex-shrink: 0; }
+        .slider-wrap { flex: 1; display: flex; align-items: center; gap: 10px; }
+        input[type=range] { flex: 1; accent-color: #667eea; }
+        .weight-val { width: 35px; text-align: right; font-weight: bold; color: #333; font-size: 0.9em; }
+        .weight-val.zero { color: #dc3545; }
+        .weight-val.high { color: #28a745; }
+        .tag { font-size: 0.75em; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+        .tag-default { background: #e9ecef; color: #666; }
+        .tag-custom { background: #d4edda; color: #155724; }
+        .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95em; transition: all 0.2s; }
+        .btn-save { background: #667eea; color: white; }
+        .btn-save:hover { background: #5a6fd6; }
+        .btn-reset { background: #6c757d; color: white; }
+        .btn-reset:hover { background: #5a6268; }
+        .btn-back { background: #e9ecef; color: #333; }
+        .btn-back:hover { background: #dee2e6; }
+        #status { margin-top: 15px; padding: 10px 15px; border-radius: 6px; display: none; font-size: 0.9em; }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .help-text { color: #888; font-size: 0.82em; margin-bottom: 15px; line-height: 1.5; }
+        .scale-labels { display: flex; justify-content: space-between; font-size: 0.75em; color: #aaa; padding: 0 2px; flex: 1; }
+    </style>
+</head>
+<body>
+    <h1>⚙️ 個人設定</h1>
+    <p class="subtitle">調整各演算法在 Ensemble 投票中的權重比例</p>
+
+    <div class="card">
+        <h2>🎯 個人化 Ensemble 權重</h2>
+        <p class="help-text">
+            滑桿範圍：<strong>0</strong>（停用此演算法）→ <strong>1</strong>（預設）→ <strong>2</strong>（加倍權重）<br>
+            🟢 綠色 = 已自訂；灰色 = 使用系統預設。修改後點「儲存」即生效。
+        </p>
+
+        <form id="weightsForm">
+            {% for algo in algo_names %}
+            <div class="algo-row" data-algo="{{ algo }}">
+                <span class="algo-name">{{ algo }}</span>
+                <div class="slider-wrap">
+                    <input type="range" min="0" max="2" step="0.1"
+                           value="1.0" id="slider-{{ algo|replace('-','_')|replace(' ','_') }}"
+                           data-algo="{{ algo }}"
+                           oninput="updateLabel(this)">
+                    <span class="weight-val" id="val-{{ algo|replace('-','_')|replace(' ','_') }}">1.0</span>
+                </div>
+                <span class="tag tag-default" id="tag-{{ algo|replace('-','_')|replace(' ','_') }}">預設</span>
+            </div>
+            {% endfor %}
+        </form>
+
+        <div class="btn-row">
+            <button class="btn-save" onclick="savePreferences()">💾 儲存設定</button>
+            <button class="btn-reset" onclick="resetToDefaults()">↺ 重設為預設</button>
+            <button class="btn-back" onclick="location.href='/'">← 返回首頁</button>
+        </div>
+        <div id="status"></div>
+    </div>
+
+    <div class="card">
+        <h2>📉 回測時間衰退因子</h2>
+        <p class="help-text">
+            值越低代表越重視近期表現（0.80 = 近期主導；1.00 = 所有期數同等重要）<br>
+            建議值：<strong>0.95</strong>（近期影響力約為最舊期的 8 倍）
+        </p>
+        <div class="algo-row">
+            <span class="algo-name">衰退因子</span>
+            <div class="slider-wrap">
+                <input type="range" min="0.80" max="1.00" step="0.01"
+                       value="0.95" id="decay-factor-slider"
+                       oninput="updateDecayLabel(this)">
+                <span class="weight-val" id="decay-factor-val">0.95</span>
+            </div>
+            <span class="tag tag-default" id="decay-factor-tag">預設</span>
+        </div>
+        <div class="scale-labels" style="margin-left:145px;">
+            <span>0.80 近期優先</span>
+            <span>0.95 建議值</span>
+            <span>1.00 全部同等</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn-save" onclick="saveDecayFactor()">💾 儲存衰退設定</button>
+        </div>
+        <div id="decay-status"></div>
+    </div>
+
+    <script>
+        // Default weights from server config
+        const DEFAULT_WEIGHTS = {
+            "Hot-50": 1.0, "Cold-50": 0.8, "RandomForest": 1.5,
+            "GradientBoosting": 1.0, "KNN": 1.2, "XGBoost": 1.3,
+            "LSTM": 1.0, "LSTM-RF": 1.2, "Markov": 1.0, "Pattern": 0.9,
+            "Astrology-Ziwei": 0.8, "Astrology-Zodiac": 0.7
+        };
+
+        function sliderId(algo) {
+            return 'slider-' + algo.replace(/-/g, '_').replace(/ /g, '_');
+        }
+        function valId(algo) {
+            return 'val-' + algo.replace(/-/g, '_').replace(/ /g, '_');
+        }
+        function tagId(algo) {
+            return 'tag-' + algo.replace(/-/g, '_').replace(/ /g, '_');
+        }
+
+        function updateLabel(slider) {
+            const algo = slider.dataset.algo;
+            const val = parseFloat(slider.value);
+            const valEl = document.getElementById(valId(algo));
+            const tagEl = document.getElementById(tagId(algo));
+            valEl.textContent = val.toFixed(1);
+            valEl.className = 'weight-val' + (val === 0 ? ' zero' : val >= 1.5 ? ' high' : '');
+            const def = DEFAULT_WEIGHTS[algo] || 1.0;
+            const isCustom = Math.abs(val - def) > 0.05;
+            tagEl.textContent = isCustom ? '自訂' : '預設';
+            tagEl.className = 'tag ' + (isCustom ? 'tag-custom' : 'tag-default');
+        }
+
+        async function loadPreferences() {
+            try {
+                const resp = await fetch('/api/preferences');
+                const prefs = await resp.json();
+                document.querySelectorAll('[data-algo]').forEach(row => {
+                    const algo = row.dataset.algo;
+                    if (!algo || !row.tagName === 'DIV') return;
+                    const slider = document.getElementById(sliderId(algo));
+                    if (!slider) return;
+                    const val = prefs[algo] !== undefined ? prefs[algo] : (DEFAULT_WEIGHTS[algo] || 1.0);
+                    slider.value = val;
+                    updateLabel(slider);
+                });
+            } catch (e) {
+                console.error('Failed to load preferences', e);
+            }
+        }
+
+        async function savePreferences() {
+            const prefs = {};
+            document.querySelectorAll('input[type=range][data-algo]').forEach(slider => {
+                prefs[slider.dataset.algo] = parseFloat(slider.value);
+            });
+            const statusEl = document.getElementById('status');
+            try {
+                const resp = await fetch('/api/preferences', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(prefs)
+                });
+                const data = await resp.json();
+                statusEl.style.display = 'block';
+                if (resp.ok) {
+                    statusEl.className = 'status-success';
+                    statusEl.textContent = '✅ 設定已儲存！下次預測將使用您的個人化權重。';
+                } else {
+                    statusEl.className = 'status-error';
+                    statusEl.textContent = '❌ 儲存失敗：' + (data.error || '未知錯誤');
+                }
+            } catch (e) {
+                statusEl.style.display = 'block';
+                statusEl.className = 'status-error';
+                statusEl.textContent = '❌ 連線失敗：' + e.message;
+            }
+        }
+
+        function resetToDefaults() {
+            document.querySelectorAll('input[type=range][data-algo]').forEach(slider => {
+                const algo = slider.dataset.algo;
+                slider.value = DEFAULT_WEIGHTS[algo] || 1.0;
+                updateLabel(slider);
+            });
+            // Save the defaults
+            savePreferences();
+        }
+
+        // Load preferences on page load
+        loadPreferences();
+
+        // ── Decay Factor ──────────────────────────────────────
+        function updateDecayLabel(slider) {
+            const val = parseFloat(slider.value);
+            document.getElementById('decay-factor-val').textContent = val.toFixed(2);
+            const isDefault = Math.abs(val - 0.95) < 0.005;
+            const tagEl = document.getElementById('decay-factor-tag');
+            tagEl.textContent = isDefault ? '預設' : '自訂';
+            tagEl.className = 'tag ' + (isDefault ? 'tag-default' : 'tag-custom');
+        }
+
+        async function loadDecayFactor() {
+            try {
+                const resp = await fetch('/api/preferences');
+                const prefs = await resp.json();
+                const val = prefs['backtest_decay_factor'] !== undefined
+                    ? prefs['backtest_decay_factor'] : 0.95;
+                const slider = document.getElementById('decay-factor-slider');
+                slider.value = val;
+                updateDecayLabel(slider);
+            } catch (e) {
+                console.error('Failed to load decay factor', e);
+            }
+        }
+
+        async function saveDecayFactor() {
+            const val = parseFloat(document.getElementById('decay-factor-slider').value);
+            const statusEl = document.getElementById('decay-status');
+            try {
+                const resp = await fetch('/api/preferences', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({'backtest_decay_factor': val})
+                });
+                const data = await resp.json();
+                statusEl.style.display = 'block';
+                if (resp.ok) {
+                    statusEl.className = 'status-success';
+                    statusEl.textContent = '✅ 衰退因子已儲存：' + val.toFixed(2);
+                } else {
+                    statusEl.className = 'status-error';
+                    statusEl.textContent = '❌ 儲存失敗：' + (data.error || '未知錯誤');
+                }
+            } catch (e) {
+                statusEl.style.display = 'block';
+                statusEl.className = 'status-error';
+                statusEl.textContent = '❌ 連線失敗：' + e.message;
+            }
+        }
+
+        loadDecayFactor();
+    </script>
+</body>
+</html>

@@ -5,9 +5,13 @@ Centralized configuration for all prediction algorithm parameters.
 Includes default values, tunable parameters, and weight management.
 """
 
+import math
+import logging
 from typing import Dict, Any
 import json
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Config file path
 CONFIG_FILE = Path(__file__).parent / "algorithm_config.json"
@@ -144,57 +148,87 @@ def set_ensemble_weight(algorithm: str, weight: float) -> bool:
     return False
 
 
-def update_weights_from_backtest(backtest_results: Dict) -> Dict[str, float]:
-    """
-    Update ensemble weights based on backtest results.
-
-    Algorithms with higher average hit counts get higher weights.
+def compute_softmax_weights(scores: Dict[str, float], temperature: float = 1.0,
+                             budget: float = 15.0,
+                             min_weight: float = 0.3) -> Dict[str, float]:
+    """Compute new ensemble weights via softmax normalization.
 
     Args:
-        backtest_results: Results from run_full_backtest()
+        scores: {algo_name: weighted_score_float}
+        temperature: Higher = more uniform distribution; lower = winner-take-more
+        budget: Total weight budget (sum of all weights)
+        min_weight: Floor weight to prevent any algorithm from becoming negligible
 
     Returns:
-        Updated weights dict
+        New weights normalized to sum=budget, floor=min_weight
     """
-    if "ranking" not in backtest_results or not backtest_results["ranking"]:
-        return get_ensemble_weights()
+    names = list(scores.keys())
+    values = [scores[n] / temperature for n in names]
+    max_v = max(values) if values else 0.0
+    exp_v = [math.exp(v - max_v) for v in values]  # numerically stable
+    total = sum(exp_v) or 1.0
+    raw = [budget * e / total for e in exp_v]
+    weights = {n: max(r, min_weight) for n, r in zip(names, raw)}
+    return weights
 
-    # Calculate weight multipliers based on performance
-    # Higher average_hits = higher weight
-    ranking = backtest_results["ranking"]
-    max_hits = max(r["average_hits"] for r in ranking) if ranking else 1
-    min_hits = min(r["average_hits"] for r in ranking) if ranking else 0
 
-    new_weights = get_ensemble_weights()
+def update_weights_from_backtest(new_weights: Dict[str, float]) -> Dict[str, float]:
+    """Update ensemble weights, protecting negative (contrarian) weights from override.
 
-    for r in ranking:
-        algo = r["algorithm"]
-        avg_hits = r["average_hits"]
+    Negative weights are manually-set contrarian signals and must not be overwritten.
+    Logs old -> new weight change for each algorithm.
 
-        # Scale weight between 0.5 and 2.0 based on relative performance
-        if max_hits > min_hits:
-            normalized = (avg_hits - min_hits) / (max_hits - min_hits)
-            weight = 0.5 + (normalized * 1.5)  # Range: 0.5 to 2.0
-        else:
-            weight = 1.0
+    Args:
+        new_weights: {algo_name: new_weight} from compute_softmax_weights()
 
-        # Map backtest algorithm names to ensemble names
-        algo_mapping = {
-            "Hot50": "Hot-50",
-            "Cold50": "Cold-50",
-            "Markov": "Markov",
-            "Pattern": "Pattern",
-        }
+    Returns:
+        Updated weights dict (as saved to config)
+    """
+    current = get_ensemble_weights()
+    updated = current.copy()
 
-        ensemble_name = algo_mapping.get(algo, algo)
-        if ensemble_name in new_weights:
-            # Preserve manually-set negative weights (contrarian signals)
-            if new_weights[ensemble_name] < 0:
-                continue
-            new_weights[ensemble_name] = round(weight, 2)
+    for algo, w in new_weights.items():
+        if algo not in updated:
+            continue
+        if updated[algo] < 0:
+            logger.info(f"  {algo}: protected (negative weight {updated[algo]}) — skipped")
+            continue
+        old = updated[algo]
+        updated[algo] = round(w, 3)
+        logger.info(f"  {algo}: {old} → {updated[algo]}")
 
-    update_config({"ensemble_weights": new_weights})
-    return new_weights
+    update_config({"ensemble_weights": updated})
+    return updated
+
+
+def get_decay_factor() -> float:
+    """Get backtest time-decay factor (1.0 = no decay)."""
+    config = get_config()
+    return float(config.get("backtest_decay_factor", 1.0))
+
+
+def get_validation_periods() -> int:
+    """Get number of periods used for walk-forward validation."""
+    config = get_config()
+    return int(config.get("validation_periods", 10))
+
+
+def get_optimizer_type() -> str:
+    """Get weight optimizer strategy: 'softmax' or 'bayesian'."""
+    config = get_config()
+    return config.get("optimizer", "softmax")
+
+
+def get_bayesian_n_trials() -> int:
+    """Get number of optuna trials for Bayesian optimization."""
+    config = get_config()
+    return int(config.get("bayesian_n_trials", 50))
+
+
+def get_bayesian_timeout() -> int:
+    """Get timeout in seconds for Bayesian optimization."""
+    config = get_config()
+    return int(config.get("bayesian_timeout_seconds", 300))
 
 
 def reset_to_defaults() -> Dict[str, Any]:

@@ -99,11 +99,29 @@ class BacktestCacheManager:
                 )
             ''')
 
+            # Walk-forward validation cache (Story-14)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS backtest_validation_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT UNIQUE NOT NULL,
+                    lottery_type TEXT NOT NULL,
+                    train_periods INTEGER NOT NULL,
+                    val_periods INTEGER NOT NULL,
+                    candidate_weights_hash TEXT NOT NULL,
+                    train_score REAL,
+                    val_score REAL,
+                    baseline_val_score REAL,
+                    is_improvement INTEGER,
+                    created_at TEXT NOT NULL
+                )
+            ''')
+
             # Create indexes for faster lookups
             conn.execute('CREATE INDEX IF NOT EXISTS idx_algo_cache_key ON backtest_algorithm_cache(cache_key)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_full_cache_key ON backtest_full_cache(cache_key)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_rolling_cache_key ON backtest_rolling_cache(cache_key)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_optimize_cache_key ON backtest_optimize_cache(cache_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_val_cache_key ON backtest_validation_cache(cache_key)')
 
             conn.commit()
 
@@ -135,10 +153,12 @@ class BacktestCacheManager:
 
     # ---- Algorithm Cache ----
 
-    def get_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int) -> Optional[Dict]:
+    def get_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int,
+                            decay_factor: float = 1.0) -> Optional[Dict]:
         """Get cached algorithm backtest result."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version)
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2', decay_str)
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -157,10 +177,12 @@ class BacktestCacheManager:
         return None
 
     def save_algorithm_cache(self, lottery_type: str, algorithm: str, periods: int,
-                             result: Dict, computation_time_ms: int = 0):
+                             result: Dict, computation_time_ms: int = 0,
+                             decay_factor: float = 1.0):
         """Save algorithm backtest result to cache."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version)
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('algo', lottery_type, algorithm, periods, data_version, 'scoring_v2', decay_str)
 
         # Remove cache metadata before saving
         result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
@@ -176,10 +198,12 @@ class BacktestCacheManager:
 
     # ---- Full Backtest Cache ----
 
-    def get_full_cache(self, lottery_type: str, periods: int) -> Optional[Dict]:
+    def get_full_cache(self, lottery_type: str, periods: int,
+                       decay_factor: float = 1.0) -> Optional[Dict]:
         """Get cached full backtest result."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version)
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2', decay_str)
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -198,10 +222,12 @@ class BacktestCacheManager:
         return None
 
     def save_full_cache(self, lottery_type: str, periods: int,
-                        result: Dict, computation_time_ms: int = 0):
+                        result: Dict, computation_time_ms: int = 0,
+                        decay_factor: float = 1.0):
         """Save full backtest result to cache."""
         data_version = self._get_data_version(lottery_type)
-        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version)
+        decay_str = f"decay{int(decay_factor * 100)}"
+        cache_key = self._generate_cache_key('full', lottery_type, periods, data_version, 'scoring_v2', decay_str)
 
         result_to_save = {k: v for k, v in result.items() if k not in ['from_cache', 'cached_at']}
 
@@ -445,6 +471,22 @@ from predict.lotto_predict_LSTMRF import predict_lstm_rf
 from predict.lotto_predict_ensemble import predict_ensemble
 
 
+# ============== Partial Hit Scoring (Story-11) ==============
+
+SCORING_TABLE = {6: 100, 5: 30, 4: 10, 3: 3}
+
+
+def compute_hit_score(predicted_nums: list, predicted_special: int,
+                      actual_nums: list, actual_special: int) -> float:
+    """Compute layered hit score for a single period prediction.
+
+    Scoring: 6/6=100, 5/6=30, 4/6=10, 3/6=3, <3=0, special=+5
+    """
+    main_hits = len(set(predicted_nums) & set(actual_nums))
+    special_hit = 5 if int(predicted_special) == int(actual_special) else 0
+    return SCORING_TABLE.get(main_hits, 0) + special_hit
+
+
 def load_historical_data(lottery_type: str = 'big') -> pd.DataFrame:
     """Load historical lottery data from CSV.
 
@@ -480,7 +522,8 @@ def calculate_hit_count(predicted: List[int], actual: List[int]) -> int:
 
 
 def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
-                       periods: int = 50, lottery_type: str = 'big') -> Dict:
+                       periods: int = 50, lottery_type: str = 'big',
+                       decay_factor: float = 1.0) -> Dict:
     """Run backtest for a specific algorithm.
 
     Args:
@@ -488,6 +531,7 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
         algorithm_name: Name of the algorithm to test
         periods: Number of periods to backtest
         lottery_type: 'big' or 'super'
+        decay_factor: Time-decay coefficient (1.0 = no decay, 0.95 = recent periods weighted more)
 
     Returns:
         Dict with backtest results
@@ -565,6 +609,12 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
             # Calculate hits
             main_hits = calculate_hit_count(predicted_numbers, actual_numbers)
             special_hit = 1 if int(predicted_special) == int(actual_special) else 0
+            raw_score = compute_hit_score(predicted_numbers, int(predicted_special),
+                                          actual_numbers, int(actual_special))
+
+            # Time-decay: i=0 oldest, i=periods-1 newest; age=0 means newest
+            age = (periods - 1) - i
+            period_score = raw_score * (decay_factor ** age)
 
             results.append({
                 'period': str(actual_row.get('Period', train_end)),
@@ -573,7 +623,9 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
                 'main_hits': int(main_hits),
                 'special_hit': int(special_hit),
                 'predicted_special': int(predicted_special),
-                'actual_special': int(actual_special)
+                'actual_special': int(actual_special),
+                'period_score': period_score,
+                'raw_score': raw_score,
             })
         except Exception as e:
             results.append({
@@ -588,9 +640,20 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
 
     hit_counts = [r['main_hits'] for r in valid_results]
     special_hits = sum(r['special_hit'] for r in valid_results)
+    period_scores = [r.get('period_score', 0) for r in valid_results]
 
     # Hit distribution
     hit_distribution = Counter(hit_counts)
+
+    # Partial hits breakdown
+    partial_hits = {
+        'hit3': sum(1 for h in hit_counts if h == 3),
+        'hit4': sum(1 for h in hit_counts if h == 4),
+        'hit5': sum(1 for h in hit_counts if h == 5),
+        'hit6': sum(1 for h in hit_counts if h == 6),
+    }
+    weighted_score = round(sum(period_scores), 2)
+    avg_score_per_period = round(weighted_score / len(valid_results), 4) if valid_results else 0.0
 
     return {
         'algorithm': algorithm_name,
@@ -603,29 +666,38 @@ def backtest_algorithm(df: pd.DataFrame, algorithm_name: str,
         'hit_3_or_more': sum(1 for h in hit_counts if h >= 3),
         'hit_4_or_more': sum(1 for h in hit_counts if h >= 4),
         'hit_5_or_more': sum(1 for h in hit_counts if h >= 5),
+        'weighted_score': weighted_score,
+        'avg_score_per_period': avg_score_per_period,
+        'partial_hits': partial_hits,
+        'decay_factor': decay_factor,
         'recent_results': valid_results[-10:]  # Last 10 results
     }
 
 
 def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
-                      use_cache: bool = True) -> Dict:
+                      use_cache: bool = True, decay_factor: float = None) -> Dict:
     """Run backtest for all supported algorithms.
 
     Args:
         lottery_type: 'big' or 'super'
         periods: Number of periods to backtest
         use_cache: Whether to use cached results (default True)
+        decay_factor: Time-decay coefficient (None = read from config)
 
     Returns:
         Dict with results for all algorithms
     """
     import time
+    from predict.config import get_decay_factor as _get_decay_factor
+    if decay_factor is None:
+        decay_factor = _get_decay_factor()
+
     start_time = time.time()
 
     # Check cache first
     if use_cache:
         cache_manager = get_cache_manager()
-        cached = cache_manager.get_full_cache(lottery_type, periods)
+        cached = cache_manager.get_full_cache(lottery_type, periods, decay_factor=decay_factor)
         if cached:
             return cached
 
@@ -639,22 +711,22 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
     results = {}
 
     for algo in algorithms:
-        # Check individual algorithm cache
+        # Check individual algorithm cache (with decay_factor in key)
         if use_cache:
-            algo_cached = cache_manager.get_algorithm_cache(lottery_type, algo, periods)
+            algo_cached = cache_manager.get_algorithm_cache(lottery_type, algo, periods, decay_factor=decay_factor)
             if algo_cached:
                 results[algo] = algo_cached
                 continue
 
         algo_start = time.time()
-        algo_result = backtest_algorithm(df, algo, periods, lottery_type)
+        algo_result = backtest_algorithm(df, algo, periods, lottery_type, decay_factor=decay_factor)
         algo_time_ms = int((time.time() - algo_start) * 1000)
 
         results[algo] = algo_result
 
         # Save individual algorithm result to cache
         if use_cache and 'error' not in algo_result:
-            cache_manager.save_algorithm_cache(lottery_type, algo, periods, algo_result, algo_time_ms)
+            cache_manager.save_algorithm_cache(lottery_type, algo, periods, algo_result, algo_time_ms, decay_factor=decay_factor)
 
     # Calculate ranking by average hits
     rankings = []
@@ -663,6 +735,8 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
             rankings.append({
                 'algorithm': algo,
                 'average_hits': result['average_hits'],
+                'weighted_score': result.get('weighted_score', 0),
+                'avg_score_per_period': result.get('avg_score_per_period', 0),
                 'hit_3_plus_rate': round(result['hit_3_or_more'] / result['periods_tested'] * 100, 1)
             })
 
@@ -681,9 +755,261 @@ def run_full_backtest(lottery_type: str = 'big', periods: int = 50,
 
     # Save full result to cache
     if use_cache:
-        cache_manager.save_full_cache(lottery_type, periods, result, total_time_ms)
+        cache_manager.save_full_cache(lottery_type, periods, result, total_time_ms, decay_factor=decay_factor)
 
     return result
+
+
+import logging as _logging
+import hashlib as _hashlib
+_autotune_logger = _logging.getLogger("predict.backtest.autotune")
+
+
+# ============== Walk-Forward Validation (Story-14) ==============
+
+from dataclasses import dataclass as _dataclass
+
+
+@_dataclass
+class ValidationResult:
+    algorithm: str
+    train_periods: int
+    val_periods: int
+    train_score: float
+    val_score: float
+    baseline_val_score: float
+    is_improvement: bool
+    candidate_weights_hash: str = ""
+
+
+class WalkForwardValidator:
+    """Validates candidate weights against baseline on an out-of-sample window.
+
+    Splits available data into:
+      - Training window: used to optimize weights (passed in as candidate_weights)
+      - Validation window: used to evaluate whether new weights improve on baseline
+
+    Prevents overfitting: only apply candidate_weights if val_score beats baseline.
+    """
+
+    def __init__(self, train_periods: int = 40, val_periods: int = 10,
+                 decay_factor: float = 1.0):
+        self.train_periods = train_periods
+        self.val_periods = val_periods
+        self.decay_factor = decay_factor
+
+    def _weights_hash(self, weights: dict) -> str:
+        key = json.dumps(weights, sort_keys=True)
+        return _hashlib.sha256(key.encode()).hexdigest()[:16]
+
+    def _compute_weighted_val_score(self, df: pd.DataFrame, weights: dict,
+                                    lottery_type: str = 'big') -> float:
+        """Run backtest on val_periods for each algorithm and compute weighted score sum."""
+        total_score = 0.0
+        total_weight = 0.0
+
+        # Only run fast algorithms on val window (skip LSTM/RF for speed)
+        fast_algos = {
+            "Hot50": "Hot-50",
+            "Cold50": "Cold-50",
+            "Markov": "Markov",
+            "Pattern": "Pattern",
+            "XGBoost": "XGBoost",
+        }
+
+        for algo_name, ensemble_name in fast_algos.items():
+            w = weights.get(ensemble_name, 0.0)
+            if w == 0:
+                continue
+            result = backtest_algorithm(df, algo_name, self.val_periods, lottery_type,
+                                        decay_factor=self.decay_factor)
+            if "error" in result:
+                continue
+            score = result.get("avg_score_per_period", 0.0)
+            total_score += score * w
+            total_weight += abs(w)
+
+        if total_weight == 0:
+            return 0.0
+        return total_score / total_weight
+
+    def validate(self, df: pd.DataFrame, candidate_weights: dict,
+                 baseline_weights: dict, lottery_type: str = 'big') -> ValidationResult:
+        """Validate candidate weights against baseline on the validation window.
+
+        Args:
+            df: Full historical data
+            candidate_weights: New weights to evaluate
+            baseline_weights: Current weights as baseline
+            lottery_type: 'big' or 'super'
+
+        Returns:
+            ValidationResult with val_score, baseline_val_score, is_improvement
+        """
+        val_score = self._compute_weighted_val_score(df, candidate_weights, lottery_type)
+        baseline_val_score = self._compute_weighted_val_score(df, baseline_weights, lottery_type)
+
+        # Require 2% improvement to apply (guards against noise)
+        is_improvement = val_score > baseline_val_score * 1.02
+
+        return ValidationResult(
+            algorithm="ensemble",
+            train_periods=self.train_periods,
+            val_periods=self.val_periods,
+            train_score=0.0,  # Not computed separately; candidate_weights come pre-optimized
+            val_score=round(val_score, 4),
+            baseline_val_score=round(baseline_val_score, 4),
+            is_improvement=is_improvement,
+            candidate_weights_hash=self._weights_hash(candidate_weights),
+        )
+
+# Backtest algorithm name -> ensemble config name mapping
+_ALGO_NAME_MAP = {
+    "Hot50": "Hot-50",
+    "Cold50": "Cold-50",
+    "Markov": "Markov",
+    "Pattern": "Pattern",
+    "RandomForest": "RandomForest",
+    "GradientBoosting": "GradientBoosting",
+    "KNN": "KNN",
+    "XGBoost": "XGBoost",
+    "LSTM": "LSTM",
+    "LSTM-RF": "LSTM-RF",
+    "Ensemble": "Ensemble",
+}
+
+
+def run_autotune(lottery_type: str = 'big', periods: int = None) -> Dict:
+    """Auto-tune ensemble weights based on recent backtest weighted_scores.
+
+    Uses softmax normalization to compute new weights. Negative weights are
+    protected and never overwritten. If all algorithm scores are zero, skips
+    tune and logs a warning.
+
+    Args:
+        lottery_type: 'big' or 'super'
+        periods: Number of backtest periods (default: from config backtest_periods)
+
+    Returns:
+        Dict with 'updated_weights', 'skipped' (bool), 'scores' used
+    """
+    from predict.config import (
+        get_config, get_ensemble_weights, compute_softmax_weights,
+        update_weights_from_backtest as _update_weights, get_decay_factor as _get_decay_factor,
+        get_validation_periods as _get_val_periods, get_optimizer_type as _get_opt_type,
+        get_bayesian_n_trials as _get_n_trials, get_bayesian_timeout as _get_timeout
+    )
+
+    config = get_config()
+    if periods is None:
+        periods = config.get("backtest_periods", 50)
+    decay_factor = _get_decay_factor()
+    val_periods = _get_val_periods()
+    train_periods = max(periods - val_periods, 10)
+    optimizer_type = _get_opt_type()
+
+    _autotune_logger.info(
+        f"Running auto-tune for '{lottery_type}' | "
+        f"train={train_periods} val={val_periods} decay={decay_factor} optimizer={optimizer_type}"
+    )
+
+    df = load_historical_data(lottery_type)
+    current_weights = get_ensemble_weights()
+
+    # ── Strategy selection ────────────────────────────────────────────────────
+    if optimizer_type == "bayesian":
+        try:
+            from predict.optimizer import BayesianWeightOptimizer
+            opt = BayesianWeightOptimizer(
+                df, lottery_type,
+                n_trials=_get_n_trials(),
+                timeout=_get_timeout(),
+                train_periods=train_periods,
+                val_periods=val_periods,
+                decay_factor=decay_factor,
+            )
+            candidate_weights = opt.optimize()
+            scores = {}  # Bayesian doesn't expose per-algo scores
+        except RuntimeError as e:
+            _autotune_logger.warning(f"Bayesian optimizer unavailable: {e} — falling back to softmax")
+            optimizer_type = "softmax"
+
+    if optimizer_type == "softmax":
+        # Step 1: Run backtest on training window only
+        backtest = run_full_backtest(lottery_type, train_periods, use_cache=True, decay_factor=decay_factor)
+        if "error" in backtest:
+            _autotune_logger.error(f"Auto-tune aborted: backtest error — {backtest['error']}")
+            return {"skipped": True, "reason": backtest["error"]}
+
+        # Step 2: Extract weighted_score per ensemble algo name
+        scores: Dict[str, float] = {}
+        for algo_result in backtest.get("ranking", []):
+            backtest_name = algo_result["algorithm"]
+            ensemble_name = _ALGO_NAME_MAP.get(backtest_name, backtest_name)
+            if ensemble_name not in current_weights:
+                continue
+            ws = algo_result.get("weighted_score", 0.0)
+            scores[ensemble_name] = ws
+
+        # Step 3: Skip if all scores are zero
+        if not scores or all(v == 0 for v in scores.values()):
+            _autotune_logger.warning(
+                "Auto-tune skipped: all algorithm weighted_scores are zero. "
+                "Run Story-11 backtest first to generate meaningful scores."
+            )
+            return {"skipped": True, "reason": "all_scores_zero", "scores": scores}
+
+        # Step 4: Filter out negative-weight algorithms (protected)
+        tuneable_scores = {k: v for k, v in scores.items() if current_weights.get(k, 1.0) >= 0}
+        if not tuneable_scores:
+            _autotune_logger.warning("Auto-tune skipped: no tuneable algorithms (all protected)")
+            return {"skipped": True, "reason": "all_protected", "scores": scores}
+
+        # Step 5: Compute softmax candidate weights
+        candidate_weights = compute_softmax_weights(tuneable_scores)
+
+    # ── Walk-forward validation (applies to both strategies) ─────────────────
+    validator = WalkForwardValidator(
+        train_periods=train_periods,
+        val_periods=val_periods,
+        decay_factor=decay_factor,
+    )
+    val_result = validator.validate(df, candidate_weights, current_weights, lottery_type)
+
+    if not val_result.is_improvement:
+        _autotune_logger.warning(
+            f"Auto-tune skipped: walk-forward validation failed — "
+            f"val_score={val_result.val_score:.4f} vs baseline={val_result.baseline_val_score:.4f}"
+        )
+        return {
+            "skipped": True,
+            "reason": "validation_failed",
+            "scores": locals().get("scores", {}),
+            "val_result": {
+                "val_score": val_result.val_score,
+                "baseline_val_score": val_result.baseline_val_score,
+                "is_improvement": False,
+            },
+        }
+
+    # ── Apply weights ─────────────────────────────────────────────────────────
+    _autotune_logger.info(
+        f"Walk-forward validation passed: {val_result.val_score:.4f} > {val_result.baseline_val_score:.4f}"
+    )
+    _autotune_logger.info("Updating ensemble weights:")
+    updated = _update_weights(candidate_weights)
+
+    return {
+        "skipped": False,
+        "scores": locals().get("scores", {}),
+        "updated_weights": updated,
+        "optimizer": optimizer_type,
+        "val_result": {
+            "val_score": val_result.val_score,
+            "baseline_val_score": val_result.baseline_val_score,
+            "is_improvement": True,
+        },
+    }
 
 
 def analyze_number_distribution(df: pd.DataFrame, periods: int = 100) -> Dict:

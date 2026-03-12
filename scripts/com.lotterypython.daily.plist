@@ -10,9 +10,11 @@
 
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>cd /Users/Bruce/git/LotteryPython && source .venv/bin/activate && python scripts/daily_automation.py --type auto 2>&1 | tee -a logs/launchd.log</string>
+        <string>cd /Users/Bruce/git/LotteryPython &amp;&amp; set -a &amp;&amp; source .env &amp;&amp; set +a &amp;&amp; source .venv/bin/activate &amp;&amp; python scripts/daily_automation.py --type auto 2&gt;&amp;1 | tee -a logs/launchd.log</string>
     </array>
 
     <key>StartCalendarInterval</key>

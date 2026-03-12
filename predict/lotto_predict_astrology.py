@@ -2,21 +2,26 @@
 Astrology-based Lottery Prediction Module
 
 Combines Chinese (紫微斗數) and Western (星座) astrology predictions
-for lottery number recommendations using Gemini AI.
+for lottery number recommendations using Claude AI (primary) with
+Gemini AI fallback on rate limit.
 """
 
+import logging
 from collections import Counter
 from typing import Optional, Tuple, List, Dict
 import re
 
 from predict.astrology.profiles import BirthProfileManager, PredictionCacheManager
 from predict.astrology.gemini_client import GeminiAstrologyClient
+from predict.astrology.claude_client import ClaudeAstrologyClient, RateLimitError
 from lotterypython.utils import get_next_draw_date
 
+logger = logging.getLogger(__name__)
 
 # Singleton instances
 _profile_manager: Optional[BirthProfileManager] = None
-_gemini_client: Optional[GeminiAstrologyClient] = None
+_astrology_client = None   # ClaudeAstrologyClient or GeminiAstrologyClient
+_fallback_client: Optional[GeminiAstrologyClient] = None
 _cache_manager: Optional[PredictionCacheManager] = None
 
 
@@ -28,33 +33,69 @@ def get_profile_manager() -> BirthProfileManager:
     return _profile_manager
 
 
-def get_gemini_client(model: str = None) -> GeminiAstrologyClient:
-    """Get or create the Gemini client singleton.
+def get_astrology_client(model: str = None):
+    """Get the primary astrology client (Claude first, Gemini fallback).
 
     Args:
         model: Optional model to use. If different from current, recreates client.
     """
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = GeminiAstrologyClient(model=model)
-    elif model and _gemini_client.get_model() != model:
-        # Model changed, recreate client
-        _gemini_client = GeminiAstrologyClient(model=model)
-    return _gemini_client
+    global _astrology_client
+    if _astrology_client is None:
+        try:
+            _astrology_client = ClaudeAstrologyClient(model=model)
+            logger.info("Using Claude CLI for astrology predictions")
+        except RuntimeError:
+            logger.info("Claude CLI not found, using Gemini as primary")
+            _astrology_client = GeminiAstrologyClient(model=model)
+    elif model and _astrology_client.get_model() != model:
+        try:
+            _astrology_client = ClaudeAstrologyClient(model=model)
+        except RuntimeError:
+            _astrology_client = GeminiAstrologyClient(model=model)
+    return _astrology_client
+
+
+# Backward compatibility aliases
+def get_gemini_client(model: str = None):
+    """Deprecated: use get_astrology_client(). Kept for backward compatibility."""
+    return get_astrology_client(model)
+
+
+def _get_fallback_client() -> GeminiAstrologyClient:
+    """Get Gemini fallback client for rate limit scenarios."""
+    global _fallback_client
+    if _fallback_client is None:
+        _fallback_client = GeminiAstrologyClient()
+        logger.info("Initialized Gemini fallback client")
+    return _fallback_client
+
+
+def _predict_with_fallback(method: str, *args, **kwargs):
+    """Call prediction on primary client, fall back to Gemini on rate limit."""
+    client = get_astrology_client()
+    try:
+        return getattr(client, method)(*args, **kwargs)
+    except RateLimitError:
+        logger.warning(f"Claude rate limit hit, falling back to Gemini for {method}")
+        fallback = _get_fallback_client()
+        return getattr(fallback, method)(*args, **kwargs)
 
 
 def set_gemini_model(model: str):
-    """Set the Gemini model to use for predictions."""
-    global _gemini_client
+    """Set the AI model for predictions. Supports both Claude and Gemini models."""
+    global _astrology_client
+    if model in ClaudeAstrologyClient.AVAILABLE_MODELS:
+        _astrology_client = ClaudeAstrologyClient(model=model)
+        return True
     if model in GeminiAstrologyClient.AVAILABLE_MODELS:
-        _gemini_client = GeminiAstrologyClient(model=model)
+        _astrology_client = GeminiAstrologyClient(model=model)
         return True
     return False
 
 
 def get_current_gemini_model() -> str:
-    """Get current Gemini model name."""
-    client = get_gemini_client()
+    """Get current AI model name."""
+    client = get_astrology_client()
     return client.get_model()
 
 
@@ -121,7 +162,6 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
         tuple: (numbers, special, details)
     """
     manager = get_profile_manager()
-    client = get_gemini_client()
     cache = get_cache_manager()
 
     # Get profiles
@@ -160,8 +200,9 @@ def predict_ziwei(lottery_type: str = 'big', profile_name: Optional[str] = None,
 
     for profile in profiles:
         try:
-            result = client.predict_ziwei(profile, lottery_type,
-                                          period=str(period), draw_date=draw_date)
+            result = _predict_with_fallback(
+                'predict_ziwei', profile, lottery_type,
+                period=str(period), draw_date=draw_date)
             all_numbers.extend(result['numbers'])
             all_specials.append(result['special'])
             details["predictions"].append({
@@ -221,7 +262,6 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
         tuple: (numbers, special, details)
     """
     manager = get_profile_manager()
-    client = get_gemini_client()
     cache = get_cache_manager()
 
     # Get profiles
@@ -260,8 +300,9 @@ def predict_zodiac(lottery_type: str = 'big', profile_name: Optional[str] = None
 
     for profile in profiles:
         try:
-            result = client.predict_zodiac(profile, lottery_type,
-                                           period=str(period), draw_date=draw_date)
+            result = _predict_with_fallback(
+                'predict_zodiac', profile, lottery_type,
+                period=str(period), draw_date=draw_date)
             all_numbers.extend(result['numbers'])
             all_specials.append(result['special'])
             details["predictions"].append({

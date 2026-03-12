@@ -19,8 +19,8 @@
 - Git
 
 ### 外部服務
-- Google Cloud Service Account
-- `credentials.json` 檔案
+- Google Cloud Service Account（`credentials.json`）
+- LINE Messaging API Channel（推播通知用）
 
 ---
 
@@ -173,39 +173,23 @@ docker-compose down
 
 ### macOS launchd
 
-建立 plist 檔案 `~/Library/LaunchAgents/com.lottery.schedule.plist`:
+使用 `scripts/com.lotterypython.daily.plist`，每天 21:30 執行。
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.lottery.schedule</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/path/to/LotteryPython/scripts/run_lottery_schedule.sh</string>
-    </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>22</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-    <key>StandardOutPath</key>
-    <string>/tmp/lottery.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/lottery.error.log</string>
-</dict>
-</plist>
-```
-
-載入排程：
 ```bash
-launchctl load ~/Library/LaunchAgents/com.lottery.schedule.plist
+# 安裝排程
+cp scripts/com.lotterypython.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.lotterypython.daily.plist
+
+# 確認已載入
+launchctl list | grep lottery
+
+# 更新設定後重新載入
+launchctl unload ~/Library/LaunchAgents/com.lotterypython.daily.plist
+launchctl load ~/Library/LaunchAgents/com.lotterypython.daily.plist
 ```
+
+> **重要：** plist 使用 `caffeinate -i` 包裝指令，執行期間阻止 macOS 睡眠。
+> 回測含 LSTM 訓練，威力彩約 3 小時、大樂透約 5 小時，若機器睡眠會導致程序被終止、LINE 通知無法送出。
 
 ### Linux cron
 
@@ -215,28 +199,6 @@ crontab -e
 
 # 新增排程（每天晚上 10 點執行）
 0 22 * * * /path/to/LotteryPython/scripts/run_lottery_schedule.sh >> ~/lottery.log 2>&1
-```
-
-### 排程腳本說明
-
-`scripts/run_lottery_schedule.sh`:
-```bash
-#!/bin/bash
-cd /path/to/LotteryPython
-source venv/bin/activate
-
-DAY=$(date +%u)
-
-case $DAY in
-    1|4)  # 週一、週四：威力彩
-        python -m lotterypython --update --type super
-        python -m lotterypython --type super --save-results
-        ;;
-    2|5)  # 週二、週五：大樂透
-        python -m lotterypython --update --type big
-        python -m lotterypython --type big --save-results
-        ;;
-esac
 ```
 
 ---
@@ -277,6 +239,11 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
 | `PYTHON_BIN` | Python 執行檔路徑 | `python` |
 | `FLASK_ENV` | Flask 環境 | `production` |
 | `FLASK_DEBUG` | 除錯模式 | `0` |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Messaging API Channel Access Token | 無（必填） |
+| `LINE_USER_ID` | LINE 預設推播使用者 ID | 無 |
+| `ROLLING_TOTAL` | 滾動回測總期數 | `40` |
+| `ROLLING_WINDOW` | 滾動回測視窗大小 | `20` |
+| `BACKTEST_PERIODS` | 完整回測期數 | `50` |
 
 ---
 

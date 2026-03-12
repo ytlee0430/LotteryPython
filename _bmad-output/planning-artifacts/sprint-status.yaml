@@ -1,0 +1,58 @@
+sprint:
+  name: "Sprint 1 - Backtest Optimization & Auto-Tune"
+  start_date: "2026-03-05"
+  end_date: "2026-03-19"
+  length_days: 14
+
+stories:
+  - id: story-07
+    title: "Algorithm Smoke Tests & Silent Exception Fix"
+    status: done
+    notes: "All ACs implemented and tests passing"
+
+  - id: story-08
+    title: "Unified PredictorBase Interface"
+    status: done
+    notes: "predict/base.py exists, Hot50Predictor/MarkovPredictor/XGBoostPredictor implemented"
+
+  - id: story-09
+    title: "Prediction Explainability"
+    status: done
+    notes: "compute_explainability() implemented, UI updated, 6 tests passing"
+
+  - id: story-10
+    title: "Personalized Ensemble Weights"
+    status: done
+    notes: "Settings page, preferences API, personalized weights in ensemble"
+
+  - id: story-11
+    title: "Partial Hit Scoring"
+    status: done
+    notes: "SCORING_TABLE, compute_hit_score(), partial_hits/weighted_score fields added; cache key updated to scoring_v2"
+
+  - id: story-12
+    title: "Performance-Based Auto-Tune"
+    status: done
+    notes: "compute_softmax_weights(), update_weights_from_backtest() with negative protection, run_autotune()"
+
+  - id: story-13
+    title: "Time-Decay Backtest Window"
+    status: done
+    notes: "decay_factor param in backtest_algorithm(), get_decay_factor(), settings slider"
+
+  - id: story-14
+    title: "Walk-Forward Validation"
+    status: done
+    notes: "WalkForwardValidator, ValidationResult, integrated in run_autotune(), /api/backtest returns validation"
+
+  - id: story-15
+    title: "Bayesian Weight Optimization"
+    status: done
+    notes: "predict/optimizer.py BayesianWeightOptimizer, strategy switching in run_autotune(), optional optuna dep"
+
+summary:
+  total: 9
+  done: 9
+  in_progress: 0
+  pending: 0
+  blocked: 0

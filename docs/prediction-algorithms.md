@@ -674,7 +674,7 @@ Counter 天然支持負值累加，因此不需修改核心投票邏輯。
 ## Astrology-Ziwei 紫微斗數預測
 
 ### 原理
-基於中國傳統命理學「紫微斗數」，根據使用者的生辰八字（國曆年月日時），透過 Gemini AI 分析命盤，推算適合的彩券號碼。
+基於中國傳統命理學「紫微斗數」，根據使用者的生辰八字（國曆年月日時），透過 AI 分析命盤，推算適合的彩券號碼。預設使用 Claude CLI（claude-sonnet-4-6），若遇到 rate limit 自動降級為 Gemini CLI。
 
 ### 資料儲存
 使用 SQLite 資料庫儲存多人生辰資料：
@@ -692,37 +692,26 @@ CREATE TABLE birth_profiles (
 );
 ```
 
-### Gemini CLI 整合
+### AI CLI 整合
+
+命理預測使用雙層 AI 架構：
+1. **主要**: Claude CLI (`claude -p`)，模型 `claude-sonnet-4-6`
+2. **降級**: Gemini CLI (`gemini`)，遇到 Claude rate limit 時自動切換
+
 ```python
-import subprocess
-import json
+# Claude CLI 呼叫方式
+result = subprocess.run(
+    ['claude', '-p', prompt, '--output-format', 'text',
+     '--model', 'claude-sonnet-4-6'],
+    capture_output=True, text=True, timeout=180
+)
 
-def call_gemini_ziwei(profile, lottery_type='big'):
-    max_num = 49 if lottery_type == 'big' else 38
-
-    prompt = f'''
-    你是一位紫微斗數大師。請根據以下生辰資料分析命盤，
-    並推薦最適合購買彩券的號碼。
-
-    姓名: {profile['name']}
-    出生年: {profile['birth_year']}
-    出生月: {profile['birth_month']}
-    出生日: {profile['birth_day']}
-    出生時: {profile['birth_hour']}時
-
-    請推薦 6 個主要號碼 (1-{max_num}) 和 1 個特別號 (1-{max_num})。
-
-    請只回傳 JSON 格式，不要有其他文字:
-    {{"numbers": [1,2,3,4,5,6], "special": 7, "analysis": "簡短命理分析"}}
-    '''
-
+# Rate limit 偵測 → 自動降級為 Gemini
+if 'rate limit' in result.stderr.lower():
     result = subprocess.run(
-        ['gemini', prompt],
-        capture_output=True,
-        text=True,
-        timeout=60
+        ['gemini', '-m', 'gemini-3-pro-preview', prompt],
+        capture_output=True, text=True, timeout=180
     )
-    return json.loads(result.stdout)
 ```
 
 ### 幸運指南
@@ -737,14 +726,14 @@ Gemini AI 同時提供購買彩券的幸運指南：
 
 ### 優缺點
 - **優點**: 結合傳統命理與現代 AI，提供個人化預測和購買建議
-- **缺點**: 依賴外部 Gemini CLI，回應時間較長
+- **缺點**: 依賴外部 AI CLI（Claude/Gemini），回應時間較長
 
 ---
 
 ## Astrology-Zodiac 西洋星座預測
 
 ### 原理
-根據使用者的出生日期判斷西洋星座，透過 Gemini AI 分析星座運勢與幸運數字，推算適合的彩券號碼。
+根據使用者的出生日期判斷西洋星座，透過 AI（Claude 為主、Gemini 降級）分析星座運勢與幸運數字，推算適合的彩券號碼。
 
 ### 星座判斷
 ```python
@@ -762,34 +751,9 @@ def get_zodiac_sign(month, day):
     return "摩羯座"
 ```
 
-### Gemini CLI 整合
-```python
-def call_gemini_zodiac(profile, lottery_type='big'):
-    max_num = 49 if lottery_type == 'big' else 38
-    zodiac = get_zodiac_sign(profile['birth_month'], profile['birth_day'])
+### AI CLI 整合
 
-    prompt = f'''
-    你是一位西洋占星術專家。請根據以下星座資料分析運勢，
-    並推薦最適合購買彩券的號碼。
-
-    姓名: {profile['name']}
-    星座: {zodiac}
-    出生日期: {profile['birth_year']}/{profile['birth_month']}/{profile['birth_day']}
-
-    請推薦 6 個主要號碼 (1-{max_num}) 和 1 個特別號 (1-{max_num})。
-
-    請只回傳 JSON 格式，不要有其他文字:
-    {{"numbers": [1,2,3,4,5,6], "special": 7, "zodiac": "{zodiac}", "lucky_elements": "幸運元素"}}
-    '''
-
-    result = subprocess.run(
-        ['gemini', prompt],
-        capture_output=True,
-        text=True,
-        timeout=60
-    )
-    return json.loads(result.stdout)
-```
+與紫微斗數相同，使用 Claude CLI 為主、Gemini CLI 為降級方案（參見上方「AI CLI 整合」）。
 
 ### 優缺點
 - **優點**: 簡單直觀，根據星座提供個人化預測
@@ -823,8 +787,8 @@ def merge_astrology_predictions(profiles, lottery_type='big'):
     all_specials = []
 
     for profile in profiles:
-        ziwei = call_gemini_ziwei(profile, lottery_type)
-        zodiac = call_gemini_zodiac(profile, lottery_type)
+        ziwei = _predict_with_fallback('predict_ziwei', profile, lottery_type)
+        zodiac = _predict_with_fallback('predict_zodiac', profile, lottery_type)
 
         all_numbers.extend(ziwei['numbers'])
         all_numbers.extend(zodiac['numbers'])
